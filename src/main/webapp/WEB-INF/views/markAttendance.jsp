@@ -10,10 +10,36 @@
     String sec = request.getParameter("section");
     String tid = request.getParameter("teacher_id");
     
-    if(cls == null || sec == null || tid == null) {
-        response.sendRedirect("/adashboard?page=attendance&error=missing_params");
-        return;
-    }
+    // Handle "null" strings from URL
+    if("null".equals(cls)) cls = null;
+    if("null".equals(sec)) sec = null;
+    
+    boolean needsSelection = (cls == null || sec == null || tid == null);
+    
+    List<Map<String, String>> teacherClasses = new ArrayList<>();
+    // Fetch assigned classes to handle the selection form
+    Connection connC = null;
+    try {
+        Class.forName("com.mysql.cj.jdbc.Driver");
+        connC = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+        String sqlC = "SELECT DISTINCT class, section FROM timetable WHERE teacher_id = (SELECT teacher_id FROM teachers WHERE user_id = ?)";
+        PreparedStatement pstmtC = connC.prepareStatement(sqlC);
+        pstmtC.setObject(1, session.getAttribute("user_id"));
+        ResultSet rsC = pstmtC.executeQuery();
+        while(rsC.next()) {
+            Map<String, String> c = new HashMap<>();
+            c.put("class", rsC.getString("class"));
+            c.put("section", rsC.getString("section"));
+            teacherClasses.add(c);
+        }
+        if(tid == null || "null".equals(tid)) {
+            PreparedStatement psT = connC.prepareStatement("SELECT teacher_id FROM teachers WHERE user_id = ?");
+            psT.setObject(1, session.getAttribute("user_id"));
+            ResultSet rsT = psT.executeQuery();
+            if(rsT.next()) tid = rsT.getString(1);
+        }
+    } catch(Exception e) { e.printStackTrace(); }
+    finally { if(connC != null) { try { connC.close(); } catch(Exception e) {} } }
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -136,7 +162,11 @@
             <div>
                 <h2 style="font-weight: 800; margin: 0;">Mark Attendance</h2>
                 <p style="color: var(--muted); margin: 5px 0 0 0;">
-                    Class: <strong><%= cls %></strong> | Section: <strong><%= sec %></strong> | Date: <strong><%= new java.util.Date() %></strong>
+                    <% if(!needsSelection) { %>
+                        Class: <strong><%= cls %></strong> | Section: <strong><%= sec %></strong> | Date: <strong><%= new java.util.Date() %></strong>
+                    <% } else { %>
+                        Please select a class and section to mark attendance.
+                    <% } %>
                 </p>
             </div>
             <% 
@@ -148,83 +178,110 @@
             </a>
         </div>
 
-        <form action="/saveAttendance" method="post" id="attForm">
-            <input type="hidden" name="class" value="<%= cls %>">
-            <input type="hidden" name="section" value="<%= sec %>">
-            <input type="hidden" name="teacher_id" value="<%= tid %>">
-            
-            <div class="attendance-card">
-                <table class="table mb-0">
-                    <thead>
-                        <tr>
-                            <th style="width: 100px;">Roll No</th>
-                            <th>Student Name</th>
-                            <th style="text-align: right;">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <%
-                            Connection conn = null;
-                            try {
-                                Class.forName("com.mysql.cj.jdbc.Driver");
-                                conn = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
-                                String sql = "SELECT student_id, name, roll_no FROM students WHERE class=? AND section=? ORDER BY CAST(roll_no AS UNSIGNED)";
-                                PreparedStatement pstmt = conn.prepareStatement(sql);
-                                pstmt.setString(1, cls);
-                                pstmt.setString(2, sec);
-                                ResultSet rs = pstmt.executeQuery();
-                                int count = 0;
-                                while(rs.next()) {
-                                    count++;
-                                    String sid = rs.getString("student_id");
-                                    String name = rs.getString("name");
-                                    String roll = rs.getString("roll_no");
-                        %>
-                        <tr>
-                            <td style="font-weight: 700; color: var(--accent);"><%= roll %></td>
-                            <td style="font-weight: 600;"><%= name %></td>
-                            <td>
-                                <div class="radio-group justify-content-end">
-                                    <div class="radio-item">
-                                        <input type="radio" name="status_<%= sid %>" value="present" id="p_<%= sid %>" checked>
-                                        <label for="p_<%= sid %>"><i class="bi bi-check-circle-fill me-1"></i>Present</label>
-                                    </div>
-                                    <div class="radio-item">
-                                        <input type="radio" name="status_<%= sid %>" value="absent" id="a_<%= sid %>">
-                                        <label for="a_<%= sid %>"><i class="bi bi-x-circle-fill me-1"></i>Absent</label>
-                                    </div>
-                                </div>
-                                <input type="hidden" name="student_ids" value="<%= sid %>">
-                            </td>
-                        </tr>
-                        <%
-                                }
-                                if(count == 0) {
-                        %>
-                        <tr>
-                            <td colspan="3" style="text-align: center; padding: 50px; color: var(--muted);">
-                                No students found for this class and section.
-                            </td>
-                        </tr>
-                        <%
-                                }
-                            } catch(Exception e) {
-                                out.println("Error: " + e.getMessage());
-                            } finally {
-                                if(conn != null) conn.close();
-                            }
-                        %>
-                    </tbody>
-                </table>
+        <% if(needsSelection) { %>
+            <div class="attendance-card" style="padding: 30px;">
+                <h5 style="font-weight: 700; margin-bottom: 20px;">Select Class & Section</h5>
+                <form action="/markAttendance" method="get">
+                    <input type="hidden" name="teacher_id" value="<%= tid %>">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Choose Assignment</label>
+                            <select name="class_sec" class="form-select" required onchange="const parts = this.value.split(':'); document.getElementById('sel-class').value = parts[0]; document.getElementById('sel-sec').value = parts[1];">
+                                <option value="">Select from your classes...</option>
+                                <% for(Map<String, String> tc : teacherClasses) { %>
+                                    <option value="<%= tc.get("class") %>:<%= tc.get("section") %>">Class <%= tc.get("class") %>-<%= tc.get("section") %></option>
+                                <% } %>
+                            </select>
+                            <input type="hidden" name="class" id="sel-class">
+                            <input type="hidden" name="section" id="sel-sec">
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100" style="border-radius: 12px; font-weight: 700; padding: 10px;">
+                                Load Students <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
+        <% } else { %>
+            <form action="/saveAttendance" method="post" id="attForm">
+                <input type="hidden" name="class" value="<%= cls %>">
+                <input type="hidden" name="section" value="<%= sec %>">
+                <input type="hidden" name="teacher_id" value="<%= tid %>">
+                
+                <div class="attendance-card">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 100px;">Roll No</th>
+                                <th>Student Name</th>
+                                <th style="text-align: right;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <%
+                                Connection conn = null;
+                                try {
+                                    Class.forName("com.mysql.cj.jdbc.Driver");
+                                    conn = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                                    String sql = "SELECT student_id, name, roll_no FROM students WHERE class=? AND section=? ORDER BY CAST(roll_no AS UNSIGNED)";
+                                    PreparedStatement pstmt = conn.prepareStatement(sql);
+                                    pstmt.setString(1, cls);
+                                    pstmt.setString(2, sec);
+                                    ResultSet rs = pstmt.executeQuery();
+                                    int count = 0;
+                                    while(rs.next()) {
+                                        count++;
+                                        String sid = rs.getString("student_id");
+                                        String name = rs.getString("name");
+                                        String roll = rs.getString("roll_no");
+                            %>
+                            <tr>
+                                <td style="font-weight: 700; color: var(--accent);"><%= roll %></td>
+                                <td style="font-weight: 600;"><%= name %></td>
+                                <td>
+                                    <div class="radio-group justify-content-end">
+                                        <div class="radio-item">
+                                            <input type="radio" name="status_<%= sid %>" value="present" id="p_<%= sid %>" checked>
+                                            <label for="p_<%= sid %>"><i class="bi bi-check-circle-fill me-1"></i>Present</label>
+                                        </div>
+                                        <div class="radio-item">
+                                            <input type="radio" name="status_<%= sid %>" value="absent" id="a_<%= sid %>">
+                                            <label for="a_<%= sid %>"><i class="bi bi-x-circle-fill me-1"></i>Absent</label>
+                                        </div>
+                                    </div>
+                                    <input type="hidden" name="student_ids" value="<%= sid %>">
+                                </td>
+                            </tr>
+                            <%
+                                    }
+                                    if(count == 0) {
+                            %>
+                            <tr>
+                                <td colspan="3" style="text-align: center; padding: 50px; color: var(--muted);">
+                                    No students found for this class and section.
+                                </td>
+                            </tr>
+                            <%
+                                    }
+                                } catch(Exception e) {
+                                    out.println("Error: " + e.getMessage());
+                                } finally {
+                                    if(conn != null) conn.close();
+                                }
+                            %>
+                        </tbody>
+                    </table>
+                </div>
 
-            <div class="save-bar">
-                <span style="font-size: 14px; opacity: 0.8;">Marking for today</span>
-                <button type="button" class="save-btn" onclick="document.getElementById('attForm').submit()">
-                    <i class="bi bi-cloud-upload-fill me-2"></i>Submit Attendance
-                </button>
-            </div>
-        </form>
+                <div class="save-bar">
+                    <span style="font-size: 14px; opacity: 0.8;">Marking for today</span>
+                    <button type="button" class="save-btn" onclick="document.getElementById('attForm').submit()">
+                        <i class="bi bi-cloud-upload-fill me-2"></i>Submit Attendance
+                    </button>
+                </div>
+            </form>
+        <% } %>
     </div>
 </body>
 </html>

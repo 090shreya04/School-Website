@@ -87,8 +87,16 @@
                     ResultSet rsSN = connD.createStatement().executeQuery("SELECT config_value FROM settings WHERE config_key='school_name'");
                     if(rsSN.next()) schoolName = rsSN.getString(1);
 
+                    // 0. Initialize lists to prevent NullPointerExceptions
+                    if(assignedClasses == null) assignedClasses = new ArrayList<>();
+                    if(resultsSummary == null) resultsSummary = new ArrayList<>();
+                    if(pendingAsgns == null) pendingAsgns = new ArrayList<>();
+                    if(completedAsgns == null) completedAsgns = new ArrayList<>();
+                    if(leaveHistory == null) leaveHistory = new ArrayList<>();
+
                     if (tId != null && !tId.isEmpty()) {
                         // 1. My Classes Count & List
+                        try {
                         String classesSql = "SELECT DISTINCT class, section FROM timetable WHERE teacher_id = ? ORDER BY class, section";
                         PreparedStatement psClasses = connD.prepareStatement(classesSql);
                         psClasses.setString(1, tId);
@@ -133,133 +141,148 @@
                             
                             assignedClasses.add(c);
                         }
+                    } catch (Exception e) { System.err.println("Error fetching classes: " + e.getMessage()); }
                         
                         // 2. Total Students Count
+                        try {
                         String studentsSql = "SELECT COUNT(*) FROM students WHERE (class, section) IN (SELECT DISTINCT class, section FROM timetable WHERE teacher_id = ?)";
                         PreparedStatement psStudents = connD.prepareStatement(studentsSql);
                         psStudents.setString(1, tId);
                         ResultSet rsStudents = psStudents.executeQuery();
                         if(rsStudents.next()) totalStudentsCount = rsStudents.getInt(1);
+                        } catch (Exception e) { System.err.println("Error fetching student count: " + e.getMessage()); }
                         
                         // 3. Class Average
+                        try {
                         String avgSql = "SELECT AVG(marks_obtained / total_marks * 100) FROM results WHERE teacher_id = ?";
                         PreparedStatement psAvg = connD.prepareStatement(avgSql);
                         psAvg.setString(1, tId);
                         ResultSet rsAvg = psAvg.executeQuery();
                         if(rsAvg.next()) classAvgPercent = rsAvg.getDouble(1);
+                        } catch (Exception e) { System.err.println("Error fetching class avg: " + e.getMessage()); }
 
                         // 4. Results Stats (Distinctions & Failed)
-                        String statsSql = "SELECT " +
-                                "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 80 THEN 1 ELSE 0 END) as distinctions, " +
-                                "SUM(CASE WHEN (marks_obtained/total_marks*100) < 33 THEN 1 ELSE 0 END) as failed " +
-                                "FROM results WHERE teacher_id = ?";
-                        PreparedStatement psStats = connD.prepareStatement(statsSql);
-                        psStats.setString(1, tId);
-                        ResultSet rsStats = psStats.executeQuery();
-                        if(rsStats.next()) {
-                            totalDistinctions = rsStats.getInt("distinctions");
-                            totalFailed = rsStats.getInt("failed");
-                        }
+                        try {
+                            String statsSql = "SELECT " +
+                                    "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 80 THEN 1 ELSE 0 END) as distinctions, " +
+                                    "SUM(CASE WHEN (marks_obtained/total_marks*100) < 33 THEN 1 ELSE 0 END) as failed " +
+                                    "FROM results WHERE teacher_id = ?";
+                            PreparedStatement psStats = connD.prepareStatement(statsSql);
+                            psStats.setString(1, tId);
+                            ResultSet rsStats = psStats.executeQuery();
+                            if(rsStats.next()) {
+                                totalDistinctions = rsStats.getInt("distinctions");
+                                totalFailed = rsStats.getInt("failed");
+                            }
+                        } catch (Exception e) { System.err.println("Error fetching result stats: " + e.getMessage()); }
                         
                         // 5. Class-wise summary for Results Page
-                        for(Map<String, String> c : assignedClasses) {
-                            Map<String, Object> r = new HashMap<>();
-                            String cVal = c.get("class");
-                            String sVal = c.get("section");
-                            r.put("class", cVal + "-" + sVal);
-                            r.put("total_students", c.get("student_count"));
-                            
-                            String classStatsSql = "SELECT COUNT(DISTINCT student_id) as appeared, " +
-                                    "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 33 THEN 1 ELSE 0 END) as passed, " +
-                                    "SUM(CASE WHEN (marks_obtained/total_marks*100) < 33 THEN 1 ELSE 0 END) as failed, " +
-                                    "AVG(marks_obtained/total_marks*100) as avg_perc, " +
-                                    "MAX(marks_obtained/total_marks*100) as highest " +
-                                    "FROM results WHERE class = ? AND section = ? AND teacher_id = ?";
-                            PreparedStatement psCS = connD.prepareStatement(classStatsSql);
-                            psCS.setString(1, cVal);
-                            psCS.setString(2, sVal);
-                            psCS.setString(3, tId);
-                            ResultSet rsCS = psCS.executeQuery();
-                            if(rsCS.next()) {
-                                r.put("appeared", rsCS.getInt("appeared"));
-                                r.put("passed", rsCS.getInt("passed"));
-                                r.put("failed", rsCS.getInt("failed"));
-                                r.put("avg_perc", String.format("%.1f", rsCS.getDouble("avg_perc")));
-                                r.put("highest", String.format("%.1f", rsCS.getDouble("highest")));
+                        try {
+                            for(Map<String, String> c : assignedClasses) {
+                                Map<String, Object> r = new HashMap<>();
+                                String cVal = c.get("class");
+                                String sVal = c.get("section");
+                                r.put("class", cVal + "-" + sVal);
+                                r.put("total_students", c.get("student_count"));
+                                
+                                String classStatsSql = "SELECT COUNT(DISTINCT student_id) as appeared, " +
+                                        "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 33 THEN 1 ELSE 0 END) as passed, " +
+                                        "SUM(CASE WHEN (marks_obtained/total_marks*100) < 33 THEN 1 ELSE 0 END) as failed, " +
+                                        "AVG(marks_obtained/total_marks*100) as avg_perc, " +
+                                        "MAX(marks_obtained/total_marks*100) as highest " +
+                                        "FROM results WHERE class = ? AND section = ? AND teacher_id = ?";
+                                PreparedStatement psCS = connD.prepareStatement(classStatsSql);
+                                psCS.setString(1, cVal);
+                                psCS.setString(2, sVal);
+                                psCS.setString(3, tId);
+                                ResultSet rsCS = psCS.executeQuery();
+                                if(rsCS.next()) {
+                                    r.put("appeared", rsCS.getInt("appeared"));
+                                    r.put("passed", rsCS.getInt("passed"));
+                                    r.put("failed", rsCS.getInt("failed"));
+                                    r.put("avg_perc", String.format("%.1f", rsCS.getDouble("avg_perc")));
+                                    r.put("highest", String.format("%.1f", rsCS.getDouble("highest")));
+                                }
+                                resultsSummary.add(r);
                             }
-                            resultsSummary.add(r);
-                        }
+                        } catch (Exception e) { System.err.println("Error fetching results summary: " + e.getMessage()); }
 
                         // 6. Fetch Assignments
-                        String sqlA = "SELECT a.*, (SELECT COUNT(*) FROM assignment_submissions s WHERE s.assignment_id = a.assignment_id) as sub_count " +
-                                     "FROM assignments a WHERE a.teacher_id = ? ORDER BY a.due_date ASC";
-                        PreparedStatement psA = connD.prepareStatement(sqlA);
-                        psA.setString(1, tId);
-                        ResultSet rsA = psA.executeQuery();
-                        java.util.Date todayAsgn = new java.util.Date();
-                        while(rsA.next()) {
-                            Map<String, String> asgn = new HashMap<>();
-                            asgn.put("id", rsA.getString("assignment_id"));
-                            asgn.put("title", rsA.getString("title"));
-                            asgn.put("class", rsA.getString("class") + "-" + rsA.getString("section"));
-                            asgn.put("subs", rsA.getString("sub_count"));
-                            asgn.put("docs", rsA.getString("documents"));
-                            java.sql.Date dDate = rsA.getDate("due_date");
-                            asgn.put("due", dDate != null ? new java.text.SimpleDateFormat("d MMM yyyy").format(dDate) : "N/A");
-                            if(dDate != null && dDate.before(todayAsgn)) {
-                                completedAsgns.add(asgn);
-                            } else {
-                                long diff = dDate != null ? dDate.getTime() - todayAsgn.getTime() : Long.MAX_VALUE;
-                                long days = diff / (1000 * 60 * 60 * 24);
-                                if(days < 2) asgn.put("tag", "Urgent");
-                                else if(days < 5) asgn.put("tag", "Soon");
-                                else asgn.put("tag", "Open");
-                                pendingAsgns.add(asgn);
+                        try {
+                            String sqlA = "SELECT a.*, (SELECT COUNT(*) FROM assignment_submissions s WHERE s.assignment_id = a.assignment_id) as sub_count " +
+                                         "FROM assignments a WHERE a.teacher_id = ? ORDER BY a.due_date ASC";
+                            PreparedStatement psA = connD.prepareStatement(sqlA);
+                            psA.setString(1, tId);
+                            ResultSet rsA = psA.executeQuery();
+                            java.util.Date todayAsgn = new java.util.Date();
+                            while(rsA.next()) {
+                                Map<String, String> asgn = new HashMap<>();
+                                asgn.put("id", rsA.getString("assignment_id"));
+                                asgn.put("title", rsA.getString("title"));
+                                asgn.put("class", rsA.getString("class") + "-" + rsA.getString("section"));
+                                asgn.put("subs", rsA.getString("sub_count"));
+                                asgn.put("docs", rsA.getString("documents"));
+                                java.sql.Date dDate = rsA.getDate("due_date");
+                                asgn.put("due", dDate != null ? new java.text.SimpleDateFormat("d MMM yyyy").format(dDate) : "N/A");
+                                if(dDate != null && dDate.before(todayAsgn)) {
+                                    completedAsgns.add(asgn);
+                                } else {
+                                    long diff = dDate != null ? dDate.getTime() - todayAsgn.getTime() : Long.MAX_VALUE;
+                                    long days = diff / (1000 * 60 * 60 * 24);
+                                    if(days < 2) asgn.put("tag", "Urgent");
+                                    else if(days < 5) asgn.put("tag", "Soon");
+                                    else asgn.put("tag", "Open");
+                                    pendingAsgns.add(asgn);
+                                }
                             }
-                        }
-                        pendingAssignmentsCount = pendingAsgns.size();
+                            pendingAssignmentsCount = pendingAsgns.size();
+                        } catch (Exception e) { System.err.println("Error fetching assignments: " + e.getMessage()); }
 
                         // 7. Fetch Leave Balance & Pending Count
-                        String balSql = "SELECT * FROM leave_balance WHERE teacher_id = ?";
-                        PreparedStatement psBal = connD.prepareStatement(balSql);
-                        psBal.setString(1, tId);
-                        ResultSet rsBal = psBal.executeQuery();
-                        if(rsBal.next()) {
-                            casualTotal = rsBal.getInt("casual_total");
-                            medicalTotal = rsBal.getInt("medical_total");
-                            earnedTotal = rsBal.getInt("earned_total");
-                            casualUsed = rsBal.getInt("casual_used");
-                            medicalUsed = rsBal.getInt("medical_used");
-                            earnedUsed = rsBal.getInt("earned_used");
-                        }
-                        String pendSql = "SELECT COUNT(*) FROM leave_applications WHERE teacher_id = ? AND status = 'pending'";
-                        PreparedStatement psPend = connD.prepareStatement(pendSql);
-                        psPend.setString(1, tId);
-                        ResultSet rsPend = psPend.executeQuery();
-                        if(rsPend.next()) pendingLeaveCount = rsPend.getInt(1);
-                        
-                        totalLeaveAllotted = casualTotal + medicalTotal + earnedTotal;
-                        totalLeaveUsed = casualUsed + medicalUsed + earnedUsed;
-                        totalLeaveAvailable = totalLeaveAllotted - totalLeaveUsed;
+                        try {
+                            String balSql = "SELECT * FROM leave_balance WHERE teacher_id = ?";
+                            PreparedStatement psBal = connD.prepareStatement(balSql);
+                            psBal.setString(1, tId);
+                            ResultSet rsBal = psBal.executeQuery();
+                            if(rsBal.next()) {
+                                casualTotal = rsBal.getInt("casual_total");
+                                medicalTotal = rsBal.getInt("medical_total");
+                                earnedTotal = rsBal.getInt("earned_total");
+                                casualUsed = rsBal.getInt("casual_used");
+                                medicalUsed = rsBal.getInt("medical_used");
+                                earnedUsed = rsBal.getInt("earned_used");
+                            }
+                            String pendSql = "SELECT COUNT(*) FROM leave_applications WHERE teacher_id = ? AND status = 'pending'";
+                            PreparedStatement psPend = connD.prepareStatement(pendSql);
+                            psPend.setString(1, tId);
+                            ResultSet rsPend = psPend.executeQuery();
+                            if(rsPend.next()) pendingLeaveCount = rsPend.getInt(1);
+                            
+                            totalLeaveAllotted = casualTotal + medicalTotal + earnedTotal;
+                            totalLeaveUsed = casualUsed + medicalUsed + earnedUsed;
+                            totalLeaveAvailable = totalLeaveAllotted - totalLeaveUsed;
+                        } catch (Exception e) { System.err.println("Error fetching leave balance: " + e.getMessage()); }
 
                         // 8. Fetch Leave History
-                        String histSql = "SELECT * FROM leave_applications WHERE teacher_id = ? ORDER BY applied_at DESC";
-                        PreparedStatement psHist = connD.prepareStatement(histSql);
-                        psHist.setString(1, tId);
-                        ResultSet rsHist = psHist.executeQuery();
-                        while(rsHist.next()) {
-                            Map<String, String> lh = new HashMap<>();
-                            String status = rsHist.getString("status");
-                            if(status == null) status = "pending";
-                            lh.put("status", status);
-                            lh.put("leave_type", rsHist.getString("leave_type") != null ? rsHist.getString("leave_type") : "General Leave");
-                            lh.put("from_date", rsHist.getString("from_date") != null ? rsHist.getString("from_date") : "N/A");
-                            lh.put("to_date", rsHist.getString("to_date") != null ? rsHist.getString("to_date") : "N/A");
-                            lh.put("days", rsHist.getString("days"));
-                            lh.put("reason", rsHist.getString("reason") != null ? rsHist.getString("reason") : "No reason provided");
-                            lh.put("applied_at", rsHist.getString("applied_at") != null ? rsHist.getString("applied_at") : "N/A");
-                            leaveHistory.add(lh);
-                        }
+                        try {
+                            String histSql = "SELECT * FROM leave_applications WHERE teacher_id = ? ORDER BY applied_at DESC";
+                            PreparedStatement psHist = connD.prepareStatement(histSql);
+                            psHist.setString(1, tId);
+                            ResultSet rsHist = psHist.executeQuery();
+                            while(rsHist.next()) {
+                                Map<String, String> lh = new HashMap<>();
+                                String status = rsHist.getString("status");
+                                if(status == null) status = "pending";
+                                lh.put("status", status);
+                                lh.put("leave_type", rsHist.getString("leave_type") != null ? rsHist.getString("leave_type") : "General Leave");
+                                lh.put("from_date", rsHist.getString("from_date") != null ? rsHist.getString("from_date") : "N/A");
+                                lh.put("to_date", rsHist.getString("to_date") != null ? rsHist.getString("to_date") : "N/A");
+                                lh.put("days", rsHist.getString("days"));
+                                lh.put("reason", rsHist.getString("reason") != null ? rsHist.getString("reason") : "No reason provided");
+                                lh.put("applied_at", rsHist.getString("applied_at") != null ? rsHist.getString("applied_at") : "N/A");
+                                leaveHistory.add(lh);
+                            }
+                        } catch (Exception e) { System.err.println("Error fetching leave history: " + e.getMessage()); }
 
                         // 9. Fetch Notices Count
                         String countNoticesSql = "SELECT COUNT(*) FROM notices WHERE target IN ('all', 'teachers') AND student_id IS NULL";
@@ -2304,23 +2327,70 @@
 
                         <!-- MARK ATTENDANCE -->
                         <div class="page" id="page-attendance">
-                            <%
+                             <%
                                 String selClass = request.getParameter("class");
                                 String selSec = request.getParameter("section");
+                                
+                                // Clean null strings
+                                if ("null".equals(selClass)) selClass = null;
+                                if ("null".equals(selSec)) selSec = null;
+
                                 if(selClass == null && assignedClasses != null && assignedClasses.size() > 0) {
-                                    selClass = assignedClasses.get(0).get("class");
-                                    selSec = assignedClasses.get(0).get("section");
+                                    // Don't auto-select if user specifically wants to choose
+                                    // selClass = assignedClasses.get(0).get("class");
+                                    // selSec = assignedClasses.get(0).get("section");
                                 }
                             %>
                             <div class="pg-header">
                                 <div class="pg-header-left">
                                     <h4>Mark Attendance</h4>
-                                    <p>Class-wise attendance mark karo</p>
+                                    <p><%= (selClass == null) ? "Kripya class aur section choose karein" : "Class-wise attendance mark karo" %></p>
                                 </div>
-                                <a href="/markAttendance?class=<%= selClass %>&section=<%= selSec %>&teacher_id=<%= tId %>" class="btn-a" style="text-decoration:none">
-                                    <i class="bi bi-pencil-square"></i> Save Attendance
-                                </a>
+                                <% if(selClass != null) { %>
+                                <div class="d-flex gap-2">
+                                    <button onclick="window.location.href='?page=attendance'" class="btn-o"><i class="bi bi-arrow-left"></i> Change Class</button>
+                                    <a href="/markAttendance?class=<%= selClass %>&section=<%= selSec %>&teacher_id=<%= tId %>" class="btn-a" style="text-decoration:none">
+                                        <i class="bi bi-pencil-square"></i> Save Attendance
+                                    </a>
+                                </div>
+                                <% } %>
                             </div>
+
+                            <% if(selClass == null) { %>
+                                <div class="cbox">
+                                    <div class="chead">
+                                        <h6>Apni Class Choose Karein</h6>
+                                    </div>
+                                    <div class="cbody">
+                                        <% if(assignedClasses != null && !assignedClasses.isEmpty()) { %>
+                                            <div class="row g-3">
+                                                <% 
+                                                    int cIdx = 0;
+                                                    for(Map<String, String> c : assignedClasses) { 
+                                                        String bg = cardColors[cIdx % cardColors.length];
+                                                        String ic = iconColors[cIdx % iconColors.length];
+                                                        cIdx++;
+                                                %>
+                                                <div class="col-md-4">
+                                                    <div class="ltype" onclick="selectClassAndReload('<%= c.get("class") %>', '<%= c.get("section") %>')" style="padding: 20px;">
+                                                        <i class="bi bi-easel2-fill" style="color:<%= ic %>; font-size: 28px;"></i>
+                                                        <div style="font-weight: 700; font-size: 16px; margin: 8px 0 4px;">Class <%= c.get("class") %>-<%= c.get("section") %></div>
+                                                        <small style="color: var(--muted);"><%= c.get("student_count") %> Students Assigned</small>
+                                                    </div>
+                                                </div>
+                                                <% } %>
+                                            </div>
+                                        <% } else { %>
+                                            <div class="text-center py-5">
+                                                <i class="bi bi-exclamation-circle" style="font-size: 48px; color: var(--muted); opacity: 0.5;"></i>
+                                                <h5 class="mt-3">Aapko koi class assign nahi ki gayi hai</h5>
+                                                <p class="text-muted">Kripya Admin se sampark karein (Teacher ID: <%= tId %>)</p>
+                                            </div>
+                                        <% } %>
+                                    </div>
+                                </div>
+                            <% } else { %>
+                                <!-- Rest of the attendance UI when class is selected -->
                             <div class="cbox mb-3">
                                 <div class="chead">
                                     <h6>Select Class</h6>
@@ -2465,6 +2535,7 @@
                                     <button type="submit" id="att-submit-btn" style="display:none"></button>
                                 </form>
                             </div>
+                            <% } %>
                         </div>
 
 
@@ -3167,8 +3238,27 @@
 
                             // Sync URL
                             const url = new URL(window.location.href);
+                            let urlChanged = false;
+                            
                             if (url.searchParams.get('page') !== pageId) {
                                 url.searchParams.set('page', pageId);
+                                urlChanged = true;
+                            }
+
+                            // Always clear transient parameters if they exist
+                            if (url.searchParams.has('success') || url.searchParams.has('error')) {
+                                url.searchParams.delete('success');
+                                url.searchParams.delete('error');
+                                urlChanged = true;
+                            }
+
+                            if (pageId !== 'attendance' && (url.searchParams.has('class') || url.searchParams.has('section'))) {
+                                url.searchParams.delete('class');
+                                url.searchParams.delete('section');
+                                urlChanged = true;
+                            }
+
+                            if (urlChanged) {
                                 window.history.replaceState({}, '', url);
                             }
                         };
