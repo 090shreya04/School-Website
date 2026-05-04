@@ -2,7 +2,7 @@
     <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
         <% if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; }
             Object userId=session.getAttribute("user_id"); String tName="Teacher" ; String tSubject="Subject Teacher" ;
-            String tInitials="T" ; String tPhotoBase64=null; String tDob="" , tGender="" , tBlood="" , tPhone="" ,
+            String tInitials="T" ; String tPhotoBase64=null; String tId="", tDob="" , tGender="" , tBlood="" , tPhone="" ,
             tEmail="" , tAddress="" , tDept="" , tEmpId="" , tQual="" , tExp="" , tJoined="" ; Connection conn=null;
             PreparedStatement pstmt=null; ResultSet rs=null; try { Class.forName("com.mysql.cj.jdbc.Driver");
             conn=DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root" , "" ); String
@@ -11,6 +11,7 @@
             tName=rs.getString("name"); tDob=rs.getString("dob"); tGender=rs.getString("gender");
             tBlood=rs.getString("blood_group"); tPhone=rs.getString("phone"); tEmail=rs.getString("email");
             tAddress=rs.getString("address"); tDept=rs.getString("department"); tEmpId=rs.getString("employee_id");
+            tId=rs.getString("teacher_id");
             tQual=rs.getString("qualification"); tExp=rs.getString("experience"); tJoined=rs.getString("joined_on");
             tSubject=rs.getString("subject"); if (tSubject==null || tSubject.isEmpty()) tSubject="Teacher" ; else
             tSubject=tSubject + " Teacher" ; byte[] photoBytes=rs.getBytes("photo"); if (photoBytes !=null &&
@@ -48,6 +49,221 @@
                 !"Teacher".equals(tSubject) && !"Subject Teacher".equals(tSubject))
                 && (tDept != null && !tDept.trim().isEmpty())
                 && (tQual != null && !tQual.trim().isEmpty());
+
+                // Fetch Dashboard Stats & Assigned Classes
+                int myClassesCount = 0;
+                int totalStudentsCount = 0;
+                int pendingAssignmentsCount = 0; 
+                double classAvgPercent = 0.0;
+                List<Map<String, String>> assignedClasses = new ArrayList<>();
+                
+                // Results Page Data
+                int totalDistinctions = 0;
+                int totalFailed = 0;
+                List<Map<String, Object>> resultsSummary = new ArrayList<>();
+
+                // Assignments Data
+                List<Map<String, String>> pendingAsgns = new ArrayList<>();
+                List<Map<String, String>> completedAsgns = new ArrayList<>();
+
+                // Leave Data
+                int casualTotal=0, medicalTotal=0, earnedTotal=0;
+                int casualUsed=0, medicalUsed=0, earnedUsed=0;
+                int pendingLeaveCount=0;
+                int totalLeaveAllotted=0, totalLeaveUsed=0, totalLeaveAvailable=0;
+                List<Map<String, String>> leaveHistory = new ArrayList<>();
+                
+                Connection connD = null;
+                try {
+                    connD = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                    
+                    if (tId != null && !tId.isEmpty()) {
+                        // 1. My Classes Count & List
+                        String classesSql = "SELECT DISTINCT class, section FROM timetable WHERE teacher_id = ? ORDER BY class, section";
+                        PreparedStatement psClasses = connD.prepareStatement(classesSql);
+                        psClasses.setString(1, tId);
+                        ResultSet rsClasses = psClasses.executeQuery();
+                        while(rsClasses.next()) {
+                            myClassesCount++;
+                            Map<String, String> c = new HashMap<>();
+                            String cVal = rsClasses.getString("class");
+                            String sVal = rsClasses.getString("section");
+                            c.put("class", cVal);
+                            c.put("section", sVal);
+                            
+                            // Get student count for this class
+                            PreparedStatement psSC = connD.prepareStatement("SELECT COUNT(*) FROM students WHERE class = ? AND section = ?");
+                            psSC.setString(1, cVal);
+                            psSC.setString(2, sVal);
+                            ResultSet rsSC = psSC.executeQuery();
+                            if(rsSC.next()) c.put("student_count", rsSC.getString(1));
+                            
+                            // Get performance for this class
+                            PreparedStatement psPerf = connD.prepareStatement("SELECT AVG(marks_obtained / total_marks * 100) FROM results WHERE class = ? AND section = ? AND teacher_id = ?");
+                            psPerf.setString(1, cVal);
+                            psPerf.setString(2, sVal);
+                            psPerf.setString(3, tId);
+                            ResultSet rsPerf = psPerf.executeQuery();
+                            double perf = 0.0;
+                            if(rsPerf.next()) perf = rsPerf.getDouble(1);
+                            c.put("performance", String.format("%.1f", perf));
+                            
+                            // Get today's attendance for this class
+                            PreparedStatement psPres = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'present'");
+                            psPres.setString(1, cVal);
+                            psPres.setString(2, sVal);
+                            ResultSet rsPres = psPres.executeQuery();
+                            if(rsPres.next()) c.put("present_today", rsPres.getString(1)); else c.put("present_today", "0");
+                            
+                            PreparedStatement psAbs = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'absent'");
+                            psAbs.setString(1, cVal);
+                            psAbs.setString(2, sVal);
+                            ResultSet rsAbs = psAbs.executeQuery();
+                            if(rsAbs.next()) c.put("absent_today", rsAbs.getString(1)); else c.put("absent_today", "0");
+                            
+                            assignedClasses.add(c);
+                        }
+                        
+                        // 2. Total Students Count
+                        String studentsSql = "SELECT COUNT(*) FROM students WHERE (class, section) IN (SELECT DISTINCT class, section FROM timetable WHERE teacher_id = ?)";
+                        PreparedStatement psStudents = connD.prepareStatement(studentsSql);
+                        psStudents.setString(1, tId);
+                        ResultSet rsStudents = psStudents.executeQuery();
+                        if(rsStudents.next()) totalStudentsCount = rsStudents.getInt(1);
+                        
+                        // 3. Class Average
+                        String avgSql = "SELECT AVG(marks_obtained / total_marks * 100) FROM results WHERE teacher_id = ?";
+                        PreparedStatement psAvg = connD.prepareStatement(avgSql);
+                        psAvg.setString(1, tId);
+                        ResultSet rsAvg = psAvg.executeQuery();
+                        if(rsAvg.next()) classAvgPercent = rsAvg.getDouble(1);
+
+                        // 4. Results Stats (Distinctions & Failed)
+                        String statsSql = "SELECT " +
+                                "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 80 THEN 1 ELSE 0 END) as distinctions, " +
+                                "SUM(CASE WHEN (marks_obtained/total_marks*100) < 33 THEN 1 ELSE 0 END) as failed " +
+                                "FROM results WHERE teacher_id = ?";
+                        PreparedStatement psStats = connD.prepareStatement(statsSql);
+                        psStats.setString(1, tId);
+                        ResultSet rsStats = psStats.executeQuery();
+                        if(rsStats.next()) {
+                            totalDistinctions = rsStats.getInt("distinctions");
+                            totalFailed = rsStats.getInt("failed");
+                        }
+                        
+                        // 5. Class-wise summary for Results Page
+                        for(Map<String, String> c : assignedClasses) {
+                            Map<String, Object> r = new HashMap<>();
+                            String cVal = c.get("class");
+                            String sVal = c.get("section");
+                            r.put("class", cVal + "-" + sVal);
+                            r.put("total_students", c.get("student_count"));
+                            
+                            String classStatsSql = "SELECT COUNT(DISTINCT student_id) as appeared, " +
+                                    "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 33 THEN 1 ELSE 0 END) as passed, " +
+                                    "SUM(CASE WHEN (marks_obtained/total_marks*100) < 33 THEN 1 ELSE 0 END) as failed, " +
+                                    "AVG(marks_obtained/total_marks*100) as avg_perc, " +
+                                    "MAX(marks_obtained/total_marks*100) as highest " +
+                                    "FROM results WHERE class = ? AND section = ? AND teacher_id = ?";
+                            PreparedStatement psCS = connD.prepareStatement(classStatsSql);
+                            psCS.setString(1, cVal);
+                            psCS.setString(2, sVal);
+                            psCS.setString(3, tId);
+                            ResultSet rsCS = psCS.executeQuery();
+                            if(rsCS.next()) {
+                                r.put("appeared", rsCS.getInt("appeared"));
+                                r.put("passed", rsCS.getInt("passed"));
+                                r.put("failed", rsCS.getInt("failed"));
+                                r.put("avg_perc", String.format("%.1f", rsCS.getDouble("avg_perc")));
+                                r.put("highest", String.format("%.1f", rsCS.getDouble("highest")));
+                            }
+                            resultsSummary.add(r);
+                        }
+
+                        // 6. Fetch Assignments
+                        String sqlA = "SELECT a.*, (SELECT COUNT(*) FROM assignment_submissions s WHERE s.assignment_id = a.assignment_id) as sub_count " +
+                                     "FROM assignments a WHERE a.teacher_id = ? ORDER BY a.due_date ASC";
+                        PreparedStatement psA = connD.prepareStatement(sqlA);
+                        psA.setString(1, tId);
+                        ResultSet rsA = psA.executeQuery();
+                        java.util.Date todayAsgn = new java.util.Date();
+                        while(rsA.next()) {
+                            Map<String, String> asgn = new HashMap<>();
+                            asgn.put("id", rsA.getString("assignment_id"));
+                            asgn.put("title", rsA.getString("title"));
+                            asgn.put("class", rsA.getString("class") + "-" + rsA.getString("section"));
+                            asgn.put("subs", rsA.getString("sub_count"));
+                            asgn.put("docs", rsA.getString("documents"));
+                            java.sql.Date dDate = rsA.getDate("due_date");
+                            asgn.put("due", dDate != null ? new java.text.SimpleDateFormat("d MMM yyyy").format(dDate) : "N/A");
+                            if(dDate != null && dDate.before(todayAsgn)) {
+                                completedAsgns.add(asgn);
+                            } else {
+                                long diff = dDate != null ? dDate.getTime() - todayAsgn.getTime() : Long.MAX_VALUE;
+                                long days = diff / (1000 * 60 * 60 * 24);
+                                if(days < 2) asgn.put("tag", "Urgent");
+                                else if(days < 5) asgn.put("tag", "Soon");
+                                else asgn.put("tag", "Open");
+                                pendingAsgns.add(asgn);
+                            }
+                        }
+                        pendingAssignmentsCount = pendingAsgns.size();
+
+                        // 7. Fetch Leave Balance & Pending Count
+                        String balSql = "SELECT * FROM leave_balance WHERE teacher_id = ?";
+                        PreparedStatement psBal = connD.prepareStatement(balSql);
+                        psBal.setString(1, tId);
+                        ResultSet rsBal = psBal.executeQuery();
+                        if(rsBal.next()) {
+                            casualTotal = rsBal.getInt("casual_total");
+                            medicalTotal = rsBal.getInt("medical_total");
+                            earnedTotal = rsBal.getInt("earned_total");
+                            casualUsed = rsBal.getInt("casual_used");
+                            medicalUsed = rsBal.getInt("medical_used");
+                            earnedUsed = rsBal.getInt("earned_used");
+                        }
+                        String pendSql = "SELECT COUNT(*) FROM leave_applications WHERE teacher_id = ? AND status = 'pending'";
+                        PreparedStatement psPend = connD.prepareStatement(pendSql);
+                        psPend.setString(1, tId);
+                        ResultSet rsPend = psPend.executeQuery();
+                        if(rsPend.next()) pendingLeaveCount = rsPend.getInt(1);
+                        
+                        totalLeaveAllotted = casualTotal + medicalTotal + earnedTotal;
+                        totalLeaveUsed = casualUsed + medicalUsed + earnedUsed;
+                        totalLeaveAvailable = totalLeaveAllotted - totalLeaveUsed;
+
+                        // 8. Fetch Leave History
+                        String histSql = "SELECT * FROM leave_applications WHERE teacher_id = ? ORDER BY applied_at DESC";
+                        PreparedStatement psHist = connD.prepareStatement(histSql);
+                        psHist.setString(1, tId);
+                        ResultSet rsHist = psHist.executeQuery();
+                        while(rsHist.next()) {
+                            Map<String, String> lh = new HashMap<>();
+                            String status = rsHist.getString("status");
+                            if(status == null) status = "pending";
+                            lh.put("status", status);
+                            lh.put("leave_type", rsHist.getString("leave_type") != null ? rsHist.getString("leave_type") : "General Leave");
+                            lh.put("from_date", rsHist.getString("from_date") != null ? rsHist.getString("from_date") : "N/A");
+                            lh.put("to_date", rsHist.getString("to_date") != null ? rsHist.getString("to_date") : "N/A");
+                            lh.put("days", rsHist.getString("days"));
+                            lh.put("reason", rsHist.getString("reason") != null ? rsHist.getString("reason") : "No reason provided");
+                            lh.put("applied_at", rsHist.getString("applied_at") != null ? rsHist.getString("applied_at") : "N/A");
+                            leaveHistory.add(lh);
+                        }
+
+                        // 9. Fetch Notices Count
+                        int totalNoticesCount = 0;
+                        String countNoticesSql = "SELECT COUNT(*) FROM notices WHERE target IN ('all', 'teachers') AND student_id IS NULL";
+                        PreparedStatement psNC = connD.prepareStatement(countNoticesSql);
+                        ResultSet rsNC = psNC.executeQuery();
+                        if(rsNC.next()) totalNoticesCount = rsNC.getInt(1);
+                        pageContext.setAttribute("noticesCount", totalNoticesCount);
+                    }
+                } catch(Exception e) {
+                    e.printStackTrace();
+                } finally {
+                    if(connD != null) try { connD.close(); } catch(Exception e) {}
+                }
                 %>
                 <!DOCTYPE html>
                 <html lang="en">
@@ -249,7 +465,7 @@
                         .s-link {
                             display: flex;
                             align-items: center;
-                            gap: 11px;
+                            gap: 12px;
                             padding: 10px 12px;
                             border-radius: 11px;
                             color: rgba(255, 255, 255, .48);
@@ -1361,35 +1577,35 @@
 
                         <nav class="s-nav">
                             <div class="s-lbl">Overview</div>
-                            <div class="s-item"><a class="s-link active" onclick="showPage('dashboard',this)"><i
+                            <div class="s-item"><a class="s-link active" data-page="dashboard"><i
                                         class="bi bi-grid-fill"></i> Dashboard</a></div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('profile',this)"><i
+                            <div class="s-item"><a class="s-link" data-page="profile"><i
                                         class="bi bi-person-fill"></i>
                                     My Profile</a></div>
 
                             <div class="s-lbl">Teaching</div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('myclasses',this)"><i
+                            <div class="s-item"><a class="s-link" data-page="myclasses"><i
                                         class="bi bi-easel2-fill"></i>
-                                    My Classes <span class="sbadge">4</span></a></div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('timetable',this)"><i
+                                    My Classes <span class="sbadge"><%= myClassesCount %></span></a></div>
+                            <div class="s-item"><a class="s-link" data-page="timetable"><i
                                         class="bi bi-clock-fill"></i>
                                     My Timetable</a></div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('attendance',this)"><i
+                            <div class="s-item"><a class="s-link" data-page="attendance"><i
                                         class="bi bi-calendar-check-fill"></i> Mark Attendance</a></div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('assignments',this)"><i
+                            <div class="s-item"><a class="s-link" data-page="assignments"><i
                                         class="bi bi-clipboard2-check-fill"></i> Assignments <span
-                                        class="sbadge red">5</span></a></div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('results',this)"><i
+                                        class="sbadge red"><%= pendingAssignmentsCount %></span></a></div>
+                            <div class="s-item"><a class="s-link" data-page="results"><i
                                         class="bi bi-bar-chart-fill"></i> Results & Marks</a></div>
 
                             <div class="s-lbl">Personal</div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('leave',this)"><i
+                            <div class="s-item"><a class="s-link" data-page="leave"><i
                                         class="bi bi-calendar2-x-fill"></i> Leave Application <span
-                                        class="sbadge">1</span></a>
+                                        class="sbadge"><%= pendingLeaveCount %></span></a>
                             </div>
-                            <div class="s-item"><a class="s-link" onclick="showPage('notices',this)"><i
+                            <div class="s-item"><a class="s-link" data-page="notices"><i
                                         class="bi bi-bell-fill"></i>
-                                    Notices <span class="sbadge">3</span></a></div>
+                                    Notices <span class="sbadge" id="sidebar-notif-count">${noticesCount}</span></a></div>
                         </nav>
 
                         <div class="s-bottom">
@@ -1407,7 +1623,7 @@
                                 <span class="tb-date" id="topbar-date">Monday, 2 Mar</span>
                                 <div class="tb-srch"><i class="bi bi-search"></i><input type="text"
                                         placeholder="Search for student or class..." /></div>
-                                <div class="tb-btn"><i class="bi bi-bell"></i><span class="notif-dot"></span></div>
+                                <div class="tb-btn" onclick="showPage('notices')" title="View Notices" style="cursor:pointer"><i class="bi bi-bell"></i><span class="notif-dot"></span></div>
                                 <div><a href="/teacher_logout" class="tb-btn" style="text-decoration: none;">
                                         <i class="bi bi-box-arrow-right"></i>
                                     </a></div>
@@ -1422,7 +1638,7 @@
                                     <p>Aaj ke classes aur students ka overview</p>
                                 </div>
                                 <button class="btn-a"
-                                    onclick="showPage('leave',document.querySelector('[onclick*=leave]'))"><i
+                                    onclick="showPage('leave')"><i
                                         class="bi bi-calendar2-x-fill"></i> Leave Apply Karo</button>
                             </div>
 
@@ -1432,7 +1648,7 @@
                                         <div class="stat-ico" style="background:#dcfce7;color:#16a34a"><i
                                                 class="bi bi-easel2-fill"></i>
                                         </div>
-                                        <h3>4</h3>
+                                        <h3><%= myClassesCount %></h3>
                                         <p>My Classes</p><span class="tag tg">This Term</span>
                                     </div>
                                 </div>
@@ -1441,15 +1657,15 @@
                                         <div class="stat-ico" style="background:#dbeafe;color:#2563eb"><i
                                                 class="bi bi-people-fill"></i>
                                         </div>
-                                        <h3>118</h3>
-                                        <p>Total Students</p><span class="tag tb">4 Classes</span>
+                                        <h3><%= totalStudentsCount %></h3>
+                                        <p>Total Students</p><span class="tag tb"><%= myClassesCount %> Classes</span>
                                     </div>
                                 </div>
                                 <div class="col-6 col-xl-3">
                                     <div class="stat">
                                         <div class="stat-ico" style="background:#fef3c7;color:#d97706"><i
                                                 class="bi bi-clipboard2-check-fill"></i></div>
-                                        <h3>5</h3>
+                                        <h3><%= pendingAssignmentsCount %></h3>
                                         <p>Pending Reviews</p><span class="tag ty">Assignments</span>
                                     </div>
                                 </div>
@@ -1457,8 +1673,8 @@
                                     <div class="stat">
                                         <div class="stat-ico" style="background:#ede9fe;color:#7c3aed"><i
                                                 class="bi bi-graph-up-arrow"></i></div>
-                                        <h3>82%</h3>
-                                        <p>Class Average</p><span class="tag tp">↑ 3.1%</span>
+                                        <h3><%= String.format("%.1f", classAvgPercent) %>%</h3>
+                                        <p>Class Average</p><span class="tag tp">↑ Live</span>
                                     </div>
                                 </div>
                             </div>
@@ -1472,28 +1688,43 @@
                                                 style="font-size:12px;color:var(--muted)">Monday, 2 Mar</span>
                                         </div>
                                         <div class="cbody">
-                                            <div class="tslot done"><span class="t-time">8:00 – 9:00</span>
-                                                <div class="t-info">
-                                                    <p>Science — Class 9-A</p><small>Chapter 8: Motion</small>
-                                                </div><span class="t-room">Lab-1</span>
-                                            </div>
-                                            <div class="tslot now"><span class="t-time">9:05 – 10:05</span>
-                                                <div class="t-info">
-                                                    <p>Science — Class 10-B ✦ Now</p><small>Chapter 12:
-                                                        Electricity</small>
-                                                </div><span class="t-room">R-204</span>
-                                            </div>
-                                            <div class="tslot"><span class="t-time">11:30 – 12:30</span>
-                                                <div class="t-info">
-                                                    <p>Science — Class 10-A</p><small>Chapter 12:
-                                                        Electricity</small>
-                                                </div><span class="t-room">Lab-2</span>
-                                            </div>
-                                            <div class="tslot"><span class="t-time">1:30 – 2:30</span>
-                                                <div class="t-info">
-                                                    <p>Science — Class 9-B</p><small>Chapter 8: Motion</small>
-                                                </div><span class="t-room">R-208</span>
-                                            </div>
+                                            <%
+                                                Connection connTT = null;
+                                                try {
+                                                    connTT = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root" , "" );
+                                                    String todayDay = new java.text.SimpleDateFormat("EEEE").format(new java.util.Date());
+                                                    String ttTodaySql = "SELECT * FROM timetable WHERE teacher_id = ? AND day = ? ORDER BY start_time";
+                                                    PreparedStatement psTT = connTT.prepareStatement(ttTodaySql);
+                                                    psTT.setString(1, tId);
+                                                    psTT.setString(2, todayDay);
+                                                    ResultSet rsTTD = psTT.executeQuery();
+                                                    boolean hasTodayTT = false;
+                                                    while(rsTTD.next()) {
+                                                        hasTodayTT = true;
+                                                        String sTime = rsTTD.getString("start_time").substring(0,5);
+                                                        String eTime = rsTTD.getString("end_time").substring(0,5);
+                                                        String subT = rsTTD.getString("subject");
+                                                        String clsT = rsTTD.getString("class") + "-" + rsTTD.getString("section");
+                                                        String roomT = rsTTD.getString("room");
+                                            %>
+                                                <div class="tslot"><span class="t-time"><%= sTime %> – <%= eTime %></span>
+                                                    <div class="t-info">
+                                                        <p><%= subT %> — Class <%= clsT %></p><small>Room <%= roomT %></small>
+                                                    </div><span class="t-room"><%= roomT %></span>
+                                                </div>
+                                            <%
+                                                    }
+                                                    if(!hasTodayTT) {
+                                            %>
+                                                <div class="text-center py-4 text-muted" style="font-size:13px;">Aaj koi classes schedule nahi hain. Chill maaro! 😎</div>
+                                            <%
+                                                    }
+                                                } catch(Exception e) {
+                                                    e.printStackTrace();
+                                                } finally {
+                                                    if (connTT != null) try { connTT.close(); } catch(Exception e) {}
+                                                }
+                                            %>
                                         </div>
                                     </div>
                                 </div>
@@ -1506,50 +1737,31 @@
                                             <h6>My Classes — Performance</h6>
                                         </div>
                                         <div class="cbody">
+                                            <%
+                                                String[] barColors = {"#22c55e", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4"};
+                                                int barIdx = 0;
+                                                for(Map<String, String> c : assignedClasses) {
+                                                    String perf = c.get("performance");
+                                                    double pVal = 0;
+                                                    try { pVal = Double.parseDouble(perf); } catch(Exception e) {}
+                                                    String color = barColors[barIdx % barColors.length];
+                                                    barIdx++;
+                                            %>
                                             <div class="mb-3">
                                                 <div class="d-flex justify-content-between mb-1"><span
-                                                        style="font-size:13px;font-weight:600">Class 9-A <span
-                                                            style="color:var(--muted);font-weight:400">(30
+                                                        style="font-size:13px;font-weight:600">Class <%= c.get("class") %>-<%= c.get("section") %> <span
+                                                            style="color:var(--muted);font-weight:400">(<%= c.get("student_count") %>
                                                             Students)</span></span><span
-                                                        style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#16a34a">86%</span>
+                                                        style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:<%= color %>"><%= perf %>%</span>
                                                 </div>
                                                 <div class="pb-wrap">
-                                                    <div class="pb" style="width:86%;background:#22c55e"></div>
+                                                    <div class="pb" style="width:<%= perf %>%;background:<%= color %>"></div>
                                                 </div>
                                             </div>
-                                            <div class="mb-3">
-                                                <div class="d-flex justify-content-between mb-1"><span
-                                                        style="font-size:13px;font-weight:600">Class 9-B <span
-                                                            style="color:var(--muted);font-weight:400">(28
-                                                            Students)</span></span><span
-                                                        style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#2563eb">79%</span>
-                                                </div>
-                                                <div class="pb-wrap">
-                                                    <div class="pb" style="width:79%;background:#3b82f6"></div>
-                                                </div>
-                                            </div>
-                                            <div class="mb-3">
-                                                <div class="d-flex justify-content-between mb-1"><span
-                                                        style="font-size:13px;font-weight:600">Class 10-A <span
-                                                            style="color:var(--muted);font-weight:400">(32
-                                                            Students)</span></span><span
-                                                        style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#8b5cf6">82%</span>
-                                                </div>
-                                                <div class="pb-wrap">
-                                                    <div class="pb" style="width:82%;background:#8b5cf6"></div>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div class="d-flex justify-content-between mb-1"><span
-                                                        style="font-size:13px;font-weight:600">Class 10-B <span
-                                                            style="color:var(--muted);font-weight:400">(28
-                                                            Students)</span></span><span
-                                                        style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#f59e0b">84%</span>
-                                                </div>
-                                                <div class="pb-wrap">
-                                                    <div class="pb" style="width:84%;background:#f59e0b"></div>
-                                                </div>
-                                            </div>
+                                            <% } %>
+                                            <% if(assignedClasses.isEmpty()) { %>
+                                                <div class="text-center py-4 text-muted">Performance data available nahi hai.</div>
+                                            <% } %>
                                         </div>
                                     </div>
                                 </div>
@@ -1560,37 +1772,43 @@
                                         <div class="chead"><i class="bi bi-clipboard2-check-fill"
                                                 style="color:var(--yellow)"></i>
                                             <h6>Pending Assignment Reviews</h6><a
-                                                onclick="showPage('assignments',document.querySelector('[onclick*=assignments]'))"
+                                                onclick="showPage('assignments')"
                                                 class="ms-auto"
                                                 style="font-size:12px;color:var(--accent);cursor:pointer;text-decoration:none;font-weight:600">Sabhi
                                                 →</a>
                                         </div>
                                         <div class="cbody">
+                                            <% 
+                                                int dIdx = 0;
+                                                for(Map<String, String> pa : pendingAsgns) {
+                                                    if(dIdx >= 3) break;
+                                                    String tag = pa.get("tag");
+                                                    String tagCls = "tg";
+                                                    if("Urgent".equals(tag)) tagCls = "tr";
+                                                    else if("Soon".equals(tag)) tagCls = "ty";
+                                                    
+                                                    String[] asgnIcons = {"bi-flask-fill", "bi-lightning-fill", "bi-wind", "bi-atom", "bi-soundwave"};
+                                                    String[] asgnBgs = {"#dcfce7", "#dbeafe", "#ede9fe", "#fef3c7", "#fee2e2"};
+                                                    String[] asgnCls = {"#16a34a", "#2563eb", "#7c3aed", "#d97706", "#dc2626"};
+                                                    
+                                                    String bg = asgnBgs[dIdx % asgnBgs.length];
+                                                    String cl = asgnCls[dIdx % asgnCls.length];
+                                                    String ico = asgnIcons[dIdx % asgnIcons.length];
+                                            %>
                                             <div class="arow">
-                                                <div class="aico" style="background:#dcfce7;color:#16a34a"><i
-                                                        class="bi bi-flask-fill"></i></div>
+                                                <div class="aico" style="background:<%= bg %>;color:<%= cl %>"><i class="bi <%= ico %>"></i></div>
                                                 <div class="ainfo">
-                                                    <p>Lab Report — Acid-Base (9-A)</p><small>12 submissions
-                                                        pending</small>
-                                                </div><span class="tag tr">Urgent</span>
+                                                    <p><%= pa.get("title") %> (<%= pa.get("class") %>)</p>
+                                                    <small><%= pa.get("subs") %> submissions pending</small>
+                                                </div><span class="tag <%= tagCls %>"><%= tag %></span>
                                             </div>
-                                            <div class="arow">
-                                                <div class="aico" style="background:#dbeafe;color:#2563eb"><i
-                                                        class="bi bi-lightning-fill"></i></div>
-                                                <div class="ainfo">
-                                                    <p>Electricity Worksheet (10-B)</p><small>8 submissions
-                                                        pending</small>
-                                                </div><span class="tag ty">Soon</span>
-                                            </div>
-                                            <div class="arow">
-                                                <div class="aico" style="background:#ede9fe;color:#7c3aed"><i
-                                                        class="bi bi-wind"></i>
-                                                </div>
-                                                <div class="ainfo">
-                                                    <p>Motion Numericals (9-B)</p><small>5 submissions
-                                                        pending</small>
-                                                </div><span class="tag tg">Open</span>
-                                            </div>
+                                            <% 
+                                                    dIdx++;
+                                                } 
+                                                if(pendingAsgns.isEmpty()) {
+                                            %>
+                                                <div class="text-center py-4 text-muted">Koi pending assignments nahi hain. ✨</div>
+                                            <% } %>
                                         </div>
                                     </div>
                                 </div>
@@ -1613,7 +1831,7 @@
                                                         style="background:#dcfce7;border-radius:12px;padding:12px;text-align:center">
                                                         <div
                                                             style="font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#16a34a">
-                                                            12</div>
+                                                            <%= totalLeaveAvailable %></div>
                                                         <div style="font-size:11px;color:#16a34a;font-weight:600">
                                                             Available
                                                         </div>
@@ -1624,7 +1842,7 @@
                                                         style="background:#fee2e2;border-radius:12px;padding:12px;text-align:center">
                                                         <div
                                                             style="font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#dc2626">
-                                                            5</div>
+                                                            <%= totalLeaveUsed %></div>
                                                         <div style="font-size:11px;color:#dc2626;font-weight:600">
                                                             Used
                                                         </div>
@@ -1635,7 +1853,7 @@
                                                         style="background:#fef3c7;border-radius:12px;padding:12px;text-align:center">
                                                         <div
                                                             style="font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#d97706">
-                                                            1</div>
+                                                            <%= pendingLeaveCount %></div>
                                                         <div style="font-size:11px;color:#d97706;font-weight:600">
                                                             Pending
                                                         </div>
@@ -1877,7 +2095,7 @@
                                         <div class="mstat-ico" style="background:#dcfce7;color:#16a34a"><i
                                                 class="bi bi-easel2-fill"></i></div>
                                         <div>
-                                            <p>4</p><small>Classes</small>
+                                            <p><%= myClassesCount %></p><small>Classes</small>
                                         </div>
                                     </div>
                                 </div>
@@ -1886,7 +2104,7 @@
                                         <div class="mstat-ico" style="background:#dbeafe;color:#2563eb"><i
                                                 class="bi bi-people-fill"></i></div>
                                         <div>
-                                            <p>118</p><small>Students</small>
+                                            <p><%= totalStudentsCount %></p><small>Students</small>
                                         </div>
                                     </div>
                                 </div>
@@ -1895,7 +2113,7 @@
                                         <div class="mstat-ico" style="background:#fef3c7;color:#d97706"><i
                                                 class="bi bi-graph-up-arrow"></i></div>
                                         <div>
-                                            <p>82%</p><small>Avg Score</small>
+                                            <p><%= String.format("%.1f", classAvgPercent) %>%</p><small>Avg Score</small>
                                         </div>
                                     </div>
                                 </div>
@@ -1904,134 +2122,63 @@
                                         <div class="mstat-ico" style="background:#ede9fe;color:#7c3aed"><i
                                                 class="bi bi-calendar-check-fill"></i></div>
                                         <div>
-                                            <p>89%</p><small>Avg Attendance</small>
+                                            <%
+                                                // Calculate overall avg attendance for today
+                                                int totalPres = 0;
+                                                for(Map<String, String> c : assignedClasses) {
+                                                    totalPres += Integer.parseInt(c.get("present_today"));
+                                                }
+                                                double avgAtt = totalStudentsCount > 0 ? (double)totalPres / totalStudentsCount * 100 : 0;
+                                            %>
+                                            <p><%= String.format("%.1f", avgAtt) %>%</p><small>Today Att.</small>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                             <div class="row g-3">
+                                <%
+                                    String[] cardColors = {"#dcfce7", "#dbeafe", "#ede9fe", "#fef3c7", "#fee2e2", "#e0f2fe"};
+                                    String[] iconColors = {"#16a34a", "#2563eb", "#7c3aed", "#d97706", "#dc2626", "#0369a1"};
+                                    int cardIdx = 0;
+                                    for(Map<String, String> c : assignedClasses) {
+                                        String bg = cardColors[cardIdx % cardColors.length];
+                                        String ic = iconColors[cardIdx % iconColors.length];
+                                        String perf = c.get("performance");
+                                        cardIdx++;
+                                %>
                                 <div class="col-md-6">
                                     <div class="cbox p-4">
                                         <div class="d-flex align-items-center gap-3 mb-3">
                                             <div class="stat-ico"
-                                                style="background:#dcfce7;color:#16a34a;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px">
+                                                style="background:<%= bg %>;color:<%= ic %>;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px">
                                                 <i class="bi bi-easel2-fill"></i>
                                             </div>
                                             <div>
-                                                <div style="font-weight:700;font-size:15px">Class 9-A</div>
-                                                <div style="font-size:12px;color:var(--muted)">30 Students • Room
-                                                    R-201
-                                                </div>
-                                            </div><span class="ms-auto tag tg">86%</span>
+                                                <div style="font-weight:700;font-size:15px">Class <%= c.get("class") %>-<%= c.get("section") %></div>
+                                                <div style="font-size:12px;color:var(--muted)"><%= c.get("student_count") %> Students</div>
+                                            </div><span class="ms-auto tag tg"><%= perf %>%</span>
                                         </div>
                                         <div class="mb-2">
                                             <div class="d-flex justify-content-between mb-1"><span
                                                     style="font-size:12px;color:var(--muted)">Class
                                                     Average</span><span
-                                                    style="font-size:12px;font-weight:700">86%</span>
+                                                    style="font-size:12px;font-weight:700"><%= perf %>%</span>
                                             </div>
                                             <div class="pb-wrap">
-                                                <div class="pb" style="width:86%;background:#22c55e"></div>
+                                                <div class="pb" style="width:<%= perf %>%;background:<%= ic %>"></div>
                                             </div>
                                         </div>
                                         <div class="d-flex justify-content-between"
                                             style="font-size:12px;color:var(--muted)">
-                                            <span>Present Today: <b style="color:#16a34a">28/30</b></span><span>Low
-                                                Attendance: <b style="color:var(--red)">2</b></span>
+                                            <span>Present Today: <b style="color:#16a34a"><%= c.get("present_today") %>/<%= c.get("student_count") %></b></span>
+                                            <span>Absent Today: <b style="color:var(--red)"><%= c.get("absent_today") %></b></span>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
-                                    <div class="cbox p-4">
-                                        <div class="d-flex align-items-center gap-3 mb-3">
-                                            <div class="stat-ico"
-                                                style="background:#dbeafe;color:#2563eb;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px">
-                                                <i class="bi bi-easel2-fill"></i>
-                                            </div>
-                                            <div>
-                                                <div style="font-weight:700;font-size:15px">Class 9-B</div>
-                                                <div style="font-size:12px;color:var(--muted)">28 Students • Room
-                                                    R-208
-                                                </div>
-                                            </div><span class="ms-auto tag tb">79%</span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <div class="d-flex justify-content-between mb-1"><span
-                                                    style="font-size:12px;color:var(--muted)">Class
-                                                    Average</span><span
-                                                    style="font-size:12px;font-weight:700">79%</span>
-                                            </div>
-                                            <div class="pb-wrap">
-                                                <div class="pb" style="width:79%;background:#3b82f6"></div>
-                                            </div>
-                                        </div>
-                                        <div class="d-flex justify-content-between"
-                                            style="font-size:12px;color:var(--muted)">
-                                            <span>Present Today: <b style="color:#16a34a">25/28</b></span><span>Low
-                                                Attendance: <b style="color:var(--red)">3</b></span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="cbox p-4">
-                                        <div class="d-flex align-items-center gap-3 mb-3">
-                                            <div class="stat-ico"
-                                                style="background:#ede9fe;color:#7c3aed;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px">
-                                                <i class="bi bi-easel2-fill"></i>
-                                            </div>
-                                            <div>
-                                                <div style="font-weight:700;font-size:15px">Class 10-A</div>
-                                                <div style="font-size:12px;color:var(--muted)">32 Students • Lab-2
-                                                </div>
-                                            </div><span class="ms-auto tag tp">82%</span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <div class="d-flex justify-content-between mb-1"><span
-                                                    style="font-size:12px;color:var(--muted)">Class
-                                                    Average</span><span
-                                                    style="font-size:12px;font-weight:700">82%</span>
-                                            </div>
-                                            <div class="pb-wrap">
-                                                <div class="pb" style="width:82%;background:#8b5cf6"></div>
-                                            </div>
-                                        </div>
-                                        <div class="d-flex justify-content-between"
-                                            style="font-size:12px;color:var(--muted)">
-                                            <span>Present Today: <b style="color:#16a34a">30/32</b></span><span>Low
-                                                Attendance: <b style="color:var(--red)">1</b></span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="cbox p-4">
-                                        <div class="d-flex align-items-center gap-3 mb-3">
-                                            <div class="stat-ico"
-                                                style="background:#fef3c7;color:#d97706;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px">
-                                                <i class="bi bi-easel2-fill"></i>
-                                            </div>
-                                            <div>
-                                                <div style="font-weight:700;font-size:15px">Class 10-B</div>
-                                                <div style="font-size:12px;color:var(--muted)">28 Students • R-204
-                                                </div>
-                                            </div><span class="ms-auto tag ty">84%</span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <div class="d-flex justify-content-between mb-1"><span
-                                                    style="font-size:12px;color:var(--muted)">Class
-                                                    Average</span><span
-                                                    style="font-size:12px;font-weight:700">84%</span>
-                                            </div>
-                                            <div class="pb-wrap">
-                                                <div class="pb" style="width:84%;background:#f59e0b"></div>
-                                            </div>
-                                        </div>
-                                        <div class="d-flex justify-content-between"
-                                            style="font-size:12px;color:var(--muted)">
-                                            <span>Present Today: <b style="color:#16a34a">26/28</b></span><span>Low
-                                                Attendance: <b style="color:var(--red)">2</b></span>
-                                        </div>
-                                    </div>
-                                </div>
+                                <% } %>
+                                <% if(assignedClasses.isEmpty()) { %>
+                                    <div class="col-12 text-center py-5 text-muted">Aapko koi classes assign nahi ki gayi hain.</div>
+                                        <% } %>
                             </div>
                         </div>
 
@@ -2045,7 +2192,7 @@
                             </div>
                             <div class="cbox">
                                 <div class="chead">
-                                    <h6>Weekly Schedule — Priya Joshi (Science)</h6>
+                                    <h6>Weekly Schedule — <%= tName != null ? tName : "Teacher" %> (<%= tSubject != null ? tSubject.replace(" Teacher", "") : "Subject" %>)</h6>
                                 </div>
                                 <div class="cbody">
                                     <div class="table-responsive">
@@ -2058,61 +2205,87 @@
                                                     <th>Wednesday</th>
                                                     <th>Thursday</th>
                                                     <th>Friday</th>
+                                                    <th>Saturday</th>
                                                 </tr>
                                             </thead>
                                             <tbody style="font-size:13px">
-                                                <tr>
-                                                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">
-                                                        8:00–9:00</td>
-                                                    <td style="font-weight:600;color:#16a34a">9-A</td>
-                                                    <td style="font-weight:600;color:var(--muted)">—</td>
-                                                    <td style="font-weight:600;color:#2563eb">9-B</td>
-                                                    <td style="font-weight:600;color:#16a34a">9-A</td>
-                                                    <td style="font-weight:600;color:var(--muted)">—</td>
-                                                </tr>
-                                                <tr>
-                                                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">
-                                                        9:05–10:05</td>
-                                                    <td style="font-weight:600;color:#f59e0b">10-B ✦</td>
-                                                    <td style="font-weight:600;color:#8b5cf6">10-A</td>
-                                                    <td style="font-weight:600;color:var(--muted)">—</td>
-                                                    <td style="font-weight:600;color:#f59e0b">10-B</td>
-                                                    <td style="font-weight:600;color:#8b5cf6">10-A</td>
-                                                </tr>
-                                                <tr>
-                                                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">
-                                                        11:30–12:30</td>
-                                                    <td style="font-weight:600;color:#8b5cf6">10-A</td>
-                                                    <td style="font-weight:600;color:#16a34a">9-A</td>
-                                                    <td style="font-weight:600;color:#f59e0b">10-B</td>
-                                                    <td style="font-weight:600;color:var(--muted)">—</td>
-                                                    <td style="font-weight:600;color:#2563eb">9-B</td>
-                                                </tr>
-                                                <tr>
-                                                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">
-                                                        1:30–2:30</td>
-                                                    <td style="font-weight:600;color:#2563eb">9-B</td>
-                                                    <td style="font-weight:600;color:var(--muted)">—</td>
-                                                    <td style="font-weight:600;color:#16a34a">9-A</td>
-                                                    <td style="font-weight:600;color:#8b5cf6">10-A</td>
-                                                    <td style="font-weight:600;color:#f59e0b">10-B</td>
-                                                </tr>
+                                                <%
+                                                    Connection connTTW = null;
+                                                    Map<String, String> classColors = new HashMap<>();
+                                                    try {
+                                                        connTTW = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root" , "" );
+                                                        String[] days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+                                                        String ttWeeklySql = "SELECT day, start_time, end_time, class, section, subject, room FROM timetable WHERE teacher_id = ? ORDER BY start_time";
+                                                        PreparedStatement psTTW = connTTW.prepareStatement(ttWeeklySql);
+                                                        psTTW.setString(1, tId);
+                                                        ResultSet rsTTW = psTTW.executeQuery();
+                                                        
+                                                        // Group by time slots
+                                                        Map<String, Map<String, String[]>> scheduleMap = new LinkedHashMap<>();
+                                                        java.util.Set<String> uniqueClasses = new java.util.LinkedHashSet<>();
+                                                        while(rsTTW.next()) {
+                                                            String timeKey = rsTTW.getString("start_time").substring(0,5) + "–" + rsTTW.getString("end_time").substring(0,5);
+                                                            String dayName = rsTTW.getString("day");
+                                                            String classVal = rsTTW.getString("class") + "-" + rsTTW.getString("section");
+                                                            String subjectVal = rsTTW.getString("subject");
+                                                            
+                                                            if(!scheduleMap.containsKey(timeKey)) scheduleMap.put(timeKey, new HashMap<>());
+                                                            scheduleMap.get(timeKey).put(dayName, new String[]{classVal, subjectVal});
+                                                            uniqueClasses.add(classVal);
+                                                        }
+                                                        
+                                                        String[] colors = {"#22c55e", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4"};
+                                                        int colorIdx = 0;
+                                                        for(String c : uniqueClasses) {
+                                                            classColors.put(c, colors[colorIdx % colors.length]);
+                                                            colorIdx++;
+                                                        }
+                                                        
+                                                        if(scheduleMap.isEmpty()) {
+                                                %>
+                                                    <tr><td colspan="7" class="text-center py-4 text-muted">Aapka weekly timetable abhi tak set nahi kiya gaya hai.</td></tr>
+                                                <%
+                                                        } else {
+                                                            for(String time : scheduleMap.keySet()) {
+                                                %>
+                                                    <tr>
+                                                        <td style="font-family:'JetBrains Mono',monospace;font-size:12px"><%= time %></td>
+                                                        <% for(String d : days) { 
+                                                            String[] slotData = scheduleMap.get(time).get(d);
+                                                            String clsValue = slotData != null ? slotData[0] : null;
+                                                            String subValue = slotData != null ? slotData[1] : null;
+                                                        %>
+                                                            <td style="font-weight:600;color:<%= clsValue != null ? classColors.get(clsValue) : "var(--muted)" %>; vertical-align:middle;">
+                                                                <% if(clsValue != null) { %>
+                                                                    <%= clsValue %><br>
+                                                                    <small style="color:var(--muted); font-weight:400; font-size:11px"><%= subValue %></small>
+                                                                <% } else { %>
+                                                                    —
+                                                                <% } %>
+                                                            </td>
+                                                        <% } %>
+                                                    </tr>
+                                                <%
+                                                            }
+                                                        }
+                                                    } catch(Exception e) { 
+                                                        e.printStackTrace(); 
+                                                    } finally {
+                                                        if (connTTW != null) try { connTTW.close(); } catch(Exception e) {}
+                                                    }
+                                                %>
                                             </tbody>
                                         </table>
                                     </div>
                                     <div class="d-flex gap-3 flex-wrap mt-3">
+                                        <% if(classColors != null && !classColors.isEmpty()) { 
+                                            for(Map.Entry<String, String> entry : classColors.entrySet()) {
+                                        %>
                                         <span style="font-size:12px;display:flex;align-items:center;gap:6px"><span
-                                                style="width:12px;height:12px;background:#22c55e;border-radius:3px;display:inline-block"></span>Class
-                                            9-A</span>
-                                        <span style="font-size:12px;display:flex;align-items:center;gap:6px"><span
-                                                style="width:12px;height:12px;background:#3b82f6;border-radius:3px;display:inline-block"></span>Class
-                                            9-B</span>
-                                        <span style="font-size:12px;display:flex;align-items:center;gap:6px"><span
-                                                style="width:12px;height:12px;background:#8b5cf6;border-radius:3px;display:inline-block"></span>Class
-                                            10-A</span>
-                                        <span style="font-size:12px;display:flex;align-items:center;gap:6px"><span
-                                                style="width:12px;height:12px;background:#f59e0b;border-radius:3px;display:inline-block"></span>Class
-                                            10-B</span>
+                                                style="width:12px;height:12px;background:<%= entry.getValue() %>;border-radius:3px;display:inline-block"></span>Class <%= entry.getKey() %></span>
+                                        <% 
+                                            } } 
+                                        %>
                                     </div>
                                 </div>
                             </div>
@@ -2120,12 +2293,22 @@
 
                         <!-- MARK ATTENDANCE -->
                         <div class="page" id="page-attendance">
+                            <%
+                                String selClass = request.getParameter("class");
+                                String selSec = request.getParameter("section");
+                                if(selClass == null && assignedClasses != null && assignedClasses.size() > 0) {
+                                    selClass = assignedClasses.get(0).get("class");
+                                    selSec = assignedClasses.get(0).get("section");
+                                }
+                            %>
                             <div class="pg-header">
                                 <div class="pg-header-left">
                                     <h4>Mark Attendance</h4>
                                     <p>Class-wise attendance mark karo</p>
                                 </div>
-                                <button class="btn-a"><i class="bi bi-floppy-fill"></i> Save Attendance</button>
+                                <a href="/markAttendance?class=<%= selClass %>&section=<%= selSec %>&teacher_id=<%= tId %>" class="btn-a" style="text-decoration:none">
+                                    <i class="bi bi-pencil-square"></i> Save Attendance
+                                </a>
                             </div>
                             <div class="cbox mb-3">
                                 <div class="chead">
@@ -2133,152 +2316,146 @@
                                 </div>
                                 <div class="cbody">
                                     <div class="row g-2">
+                                        <%
+                                            String[] classColorsArray = {"#16a34a", "#2563eb", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4"};
+                                            int colorIdx = 0;
+                                            if(assignedClasses != null) {
+                                                for(Map<String, String> c : assignedClasses) {
+                                                    boolean isSelected = c.get("class").equals(selClass) && c.get("section").equals(selSec);
+                                                    String color = classColorsArray[colorIdx % classColorsArray.length];
+                                                    colorIdx++;
+                                        %>
                                         <div class="col-6 col-md-3">
-                                            <div class="ltype sel" onclick="selectClass(this,'9-A')"><i
-                                                    class="bi bi-easel2-fill" style="color:#16a34a"></i><span>Class
-                                                    9-A</span><small>30 Students</small></div>
+                                            <div class="ltype <%= isSelected ? "sel" : "" %>" onclick="selectClassAndReload('<%= c.get("class") %>', '<%= c.get("section") %>')">
+                                                <i class="bi bi-easel2-fill" style="color:<%= color %>"></i>
+                                                <span>Class <%= c.get("class") %>-<%= c.get("section") %></span>
+                                                <small><%= c.get("student_count") %> Students</small>
+                                            </div>
                                         </div>
-                                        <div class="col-6 col-md-3">
-                                            <div class="ltype" onclick="selectClass(this,'9-B')"><i
-                                                    class="bi bi-easel2-fill" style="color:#2563eb"></i><span>Class
-                                                    9-B</span><small>28 Students</small></div>
-                                        </div>
-                                        <div class="col-6 col-md-3">
-                                            <div class="ltype" onclick="selectClass(this,'10-A')"><i
-                                                    class="bi bi-easel2-fill" style="color:#8b5cf6"></i><span>Class
-                                                    10-A</span><small>32 Students</small></div>
-                                        </div>
-                                        <div class="col-6 col-md-3">
-                                            <div class="ltype" onclick="selectClass(this,'10-B')"><i
-                                                    class="bi bi-easel2-fill" style="color:#f59e0b"></i><span>Class
-                                                    10-B</span><small>28 Students</small></div>
-                                        </div>
+                                        <%      } 
+                                            }
+                                        %>
+                                        <% if(assignedClasses == null || assignedClasses.isEmpty()) { %>
+                                            <div class="col-12 text-center py-3 text-muted">Aapko koi class assign nahi ki gayi hai.</div>
+                                        <% } %>
                                     </div>
                                 </div>
                             </div>
                             <div class="cbox">
                                 <div class="chead">
-                                    <h6 id="att-class-title">Class 9-A — Attendance (<span id="att-date-val">2 March
-                                            2026</span>)</h6>
-                                    <div class="ms-auto d-flex gap-2"><button class="btn-o"
-                                            style="font-size:12px;padding:6px 12px" onclick="markAll('P')">Sabhi
-                                            Present</button><button class="btn-o"
-                                            style="font-size:12px;padding:6px 12px" onclick="markAll('A')">Sabhi
-                                            Absent</button></div>
+                                    <h6 id="att-class-title">Class <%= selClass != null ? selClass + "-" + selSec : "..." %> — Attendance (<span id="att-date-val">...</span>)</h6>
                                 </div>
-                                <div class="table-responsive">
-                                    <table class="table tbl mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th>#</th>
-                                                <th>Student Name</th>
-                                                <th>Roll No.</th>
-                                                <th>Present</th>
-                                                <th>Absent</th>
-                                                <th>Leave</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="att-tbody">
-                                            <tr>
-                                                <td>1</td>
-                                                <td>
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="avsm" style="background:#dcfce7;color:#16a34a">
-                                                            AK
+                                <form action="/saveAttendance" method="post" id="attendance-form">
+                                    <input type="hidden" name="class" value="<%= selClass %>">
+                                    <input type="hidden" name="section" value="<%= selSec %>">
+                                    <input type="hidden" name="teacher_id" value="<%= tId %>">
+                                    
+                                    <div class="table-responsive">
+                                        <table class="table tbl mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>Student Name</th>
+                                                    <th>Roll No.</th>
+                                                    <th>Present</th>
+                                                    <th>Absent</th>
+                                                    <th style="width:100px">Status Today</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="att-tbody">
+                                                <%
+                                                    if(selClass != null) {
+                                                        Connection connAtt = null;
+                                                        try {
+                                                            connAtt = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                                                            String studentSql = "SELECT s.student_id, s.name, s.roll_no, a.status FROM students s " +
+                                                                              "LEFT JOIN attendance a ON s.student_id = a.student_id AND a.date = CURDATE() " +
+                                                                              "WHERE s.class = ? AND s.section = ? ORDER BY s.roll_no";
+                                                            PreparedStatement psAtt = connAtt.prepareStatement(studentSql);
+                                                            psAtt.setString(1, selClass);
+                                                            psAtt.setString(2, selSec);
+                                                            ResultSet rsAtt = psAtt.executeQuery();
+                                                            int count = 0;
+                                                            while(rsAtt.next()) {
+                                                                count++;
+                                                                String sid = rsAtt.getString("student_id");
+                                                                String name = rsAtt.getString("name");
+                                                                String roll = rsAtt.getString("roll_no");
+                                                                String statusToday = rsAtt.getString("status");
+                                                                String initials = "";
+                                                                if(name != null && name.length() > 0) {
+                                                                    String[] parts = name.split(" ");
+                                                                    initials = parts[0].substring(0,1).toUpperCase();
+                                                                    if(parts.length > 1) initials += parts[1].substring(0,1).toUpperCase();
+                                                                }
+                                                                
+                                                                String[] colorP = {"#dcfce7", "#dbeafe", "#fef3c7", "#ede9fe"};
+                                                                String[] textP = {"#16a34a", "#2563eb", "#d97706", "#7c3aed"};
+                                                                String pCol = colorP[count % 4];
+                                                                String tCol = textP[count % 4];
+                                                                
+                                                                boolean isMarked = (statusToday != null);
+                                                %>
+                                                <tr>
+                                                    <td><%= count %></td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center gap-2">
+                                                            <div class="avsm" style="background:<%= pCol %>;color:<%= tCol %>"><%= initials %></div>
+                                                            <%= name %>
                                                         </div>
-                                                        Arjun Kumar
-                                                    </div>
-                                                </td>
-                                                <td style="font-family:'JetBrains Mono',monospace">#42</td>
-                                                <td><input type="radio" name="s1" value="P" checked
-                                                        class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s1" value="A" class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s1" value="L" class="form-check-input" />
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>2</td>
-                                                <td>
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="avsm" style="background:#dbeafe;color:#2563eb">
-                                                            NK
-                                                        </div>
-                                                        Neha Kapoor
-                                                    </div>
-                                                </td>
-                                                <td style="font-family:'JetBrains Mono',monospace">#22</td>
-                                                <td><input type="radio" name="s2" value="P" checked
-                                                        class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s2" value="A" class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s2" value="L" class="form-check-input" />
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>3</td>
-                                                <td>
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="avsm" style="background:#fef3c7;color:#d97706">
-                                                            SM
-                                                        </div>
-                                                        Suresh Mehta
-                                                    </div>
-                                                </td>
-                                                <td style="font-family:'JetBrains Mono',monospace">#31</td>
-                                                <td><input type="radio" name="s3" value="P" class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s3" value="A" checked
-                                                        class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s3" value="L" class="form-check-input" />
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>4</td>
-                                                <td>
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="avsm" style="background:#ede9fe;color:#7c3aed">
-                                                            RS
-                                                        </div>
-                                                        Rahul Singh
-                                                    </div>
-                                                </td>
-                                                <td style="font-family:'JetBrains Mono',monospace">#18</td>
-                                                <td><input type="radio" name="s4" value="P" checked
-                                                        class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s4" value="A" class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s4" value="L" class="form-check-input" />
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>5</td>
-                                                <td>
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="avsm" style="background:#fee2e2;color:#dc2626">
-                                                            PS
-                                                        </div>
-                                                        Pooja Sharma
-                                                    </div>
-                                                </td>
-                                                <td style="font-family:'JetBrains Mono',monospace">#07</td>
-                                                <td><input type="radio" name="s5" value="P" class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s5" value="A" class="form-check-input" />
-                                                </td>
-                                                <td><input type="radio" name="s5" value="L" checked
-                                                        class="form-check-input" />
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                                                        <input type="hidden" name="student_ids" value="<%= sid %>">
+                                                    </td>
+                                                    <td style="font-family:'JetBrains Mono',monospace">#<%= roll %></td>
+                                                    <td>
+                                                        <% if(isMarked) { %>
+                                                            <% if("present".equalsIgnoreCase(statusToday)) { %>
+                                                                <i class="bi bi-check-circle-fill text-success" style="font-size:18px"></i>
+                                                            <% } else { %>
+                                                                <i class="bi bi-circle text-muted" style="opacity:0.3"></i>
+                                                            <% } %>
+                                                        <% } else { %>
+                                                            <input type="radio" name="status_<%= sid %>" value="present" checked class="form-check-input" />
+                                                        <% } %>
+                                                    </td>
+                                                    <td>
+                                                        <% if(isMarked) { %>
+                                                            <% if("absent".equalsIgnoreCase(statusToday)) { %>
+                                                                <i class="bi bi-x-circle-fill text-danger" style="font-size:18px"></i>
+                                                            <% } else { %>
+                                                                <i class="bi bi-circle text-muted" style="opacity:0.3"></i>
+                                                            <% } %>
+                                                        <% } else { %>
+                                                            <input type="radio" name="status_<%= sid %>" value="absent" class="form-check-input" />
+                                                        <% } %>
+                                                    </td>
+                                                    <td>
+                                                        <% if(isMarked) { %>
+                                                            <span class="tag <%= "present".equalsIgnoreCase(statusToday) ? "tg" : "tr" %>"><%= statusToday %></span>
+                                                        <% } else { %>
+                                                            <span class="tag ty">Not Marked</span>
+                                                        <% } %>
+                                                    </td>
+                                                </tr>
+                                                <%
+                                                            }
+                                                            if(count == 0) {
+                                                                out.println("<tr><td colspan='6' class='text-center py-4 text-muted'>Is class mein koi students nahi hain.</td></tr>");
+                                                            }
+                                                        } catch(Exception e) {
+                                                            e.printStackTrace();
+                                                        } finally {
+                                                            if(connAtt != null) try { connAtt.close(); } catch(Exception e) {}
+                                                        }
+                                                    }
+                                                %>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button type="submit" id="att-submit-btn" style="display:none"></button>
+                                </form>
                             </div>
                         </div>
+
 
                         <!-- ASSIGNMENTS -->
                         <div class="page" id="page-assignments">
@@ -2287,95 +2464,72 @@
                                     <h4>Assignments</h4>
                                     <p>Assignments create karo aur submissions review karo</p>
                                 </div>
-                                <button class="btn-a"><i class="bi bi-plus-lg"></i> Naya Assignment Do</button>
+                                <button class="btn-a" onclick="openAssignmentModal()"><i class="bi bi-plus-lg"></i> Naya Assignment Do</button>
                             </div>
+                            
+                            <!-- Assignments already fetched at top -->
+
                             <div class="cbox mb-3">
                                 <div class="chead"><i class="bi bi-hourglass-split" style="color:var(--red)"></i>
-                                    <h6>Review Pending (5)</h6>
+                                    <h6>Review Pending (<%= pendingAsgns.size() %>)</h6>
                                 </div>
                                 <div class="cbody">
+                                    <% 
+                                        String[] asgnIcons = {"bi-flask-fill", "bi-lightning-fill", "bi-wind", "bi-atom", "bi-soundwave"};
+                                        String[] asgnBgs = {"#dcfce7", "#dbeafe", "#ede9fe", "#fef3c7", "#fee2e2"};
+                                        String[] asgnCls = {"#16a34a", "#2563eb", "#7c3aed", "#d97706", "#dc2626"};
+                                        int aIdx = 0;
+                                        for(Map<String, String> pa : pendingAsgns) {
+                                            String bg = asgnBgs[aIdx % asgnBgs.length];
+                                            String cl = asgnCls[aIdx % asgnCls.length];
+                                            String ico = asgnIcons[aIdx % asgnIcons.length];
+                                            String tag = pa.get("tag");
+                                            String tagCls = "tg";
+                                            if("Urgent".equals(tag)) tagCls = "tr";
+                                            else if("Soon".equals(tag)) tagCls = "ty";
+                                            aIdx++;
+                                    %>
                                     <div class="arow">
-                                        <div class="aico" style="background:#dcfce7;color:#16a34a"><i
-                                                class="bi bi-flask-fill"></i>
+                                        <div class="aico" style="background:<%= bg %>;color:<%= cl %>"><i class="bi <%= ico %>"></i></div>
+                                        <div class="ainfo">
+                                            <p><%= pa.get("title") %></p>
+                                            <small>Class <%= pa.get("class") %> • <%= pa.get("subs") %> submissions • Due: <%= pa.get("due") %></small>
+                                            <% if(pa.get("docs") != null && !pa.get("docs").isEmpty()) { %>
+                                                <div class="mt-1"><a href="<%= pa.get("docs") %>" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none"><i class="bi bi-paperclip"></i> Attachment View Karein</a></div>
+                                            <% } %>
                                         </div>
-                                        <div class="ainfo">
-                                            <p>Lab Report — Acid-Base Reaction</p><small>Class 9-A • 12 submissions
-                                                •
-                                                Due: 3
-                                                Mar
-                                                2026</small>
-                                        </div><span class="tag tr">Urgent</span>
-                                    </div>
-                                    <div class="arow">
-                                        <div class="aico" style="background:#dbeafe;color:#2563eb"><i
-                                                class="bi bi-lightning-fill"></i>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <a href="/reviewSubmissions?assignment_id=<%= pa.get("id") %>" class="tag tb" style="text-decoration:none">Review</a>
+                                            <span class="tag <%= tagCls %>"><%= tag %></span>
                                         </div>
-                                        <div class="ainfo">
-                                            <p>Electricity Worksheet</p><small>Class 10-B • 8 submissions • Due: 4
-                                                Mar
-                                                2026</small>
-                                        </div><span class="tag ty">Soon</span>
                                     </div>
-                                    <div class="arow">
-                                        <div class="aico" style="background:#ede9fe;color:#7c3aed"><i
-                                                class="bi bi-wind"></i>
-                                        </div>
-                                        <div class="ainfo">
-                                            <p>Motion Numericals — Chapter 8</p><small>Class 9-B • 5 submissions •
-                                                Due:
-                                                6
-                                                Mar
-                                                2026</small>
-                                        </div><span class="tag tg">Open</span>
-                                    </div>
-                                    <div class="arow">
-                                        <div class="aico" style="background:#fef3c7;color:#d97706"><i
-                                                class="bi bi-atom"></i>
-                                        </div>
-                                        <div class="ainfo">
-                                            <p>Chemical Reactions Lab Summary</p><small>Class 10-A • 3 submissions •
-                                                Due: 7
-                                                Mar
-                                                2026</small>
-                                        </div><span class="tag tg">Open</span>
-                                    </div>
-                                    <div class="arow">
-                                        <div class="aico" style="background:#fee2e2;color:#dc2626"><i
-                                                class="bi bi-soundwave"></i></div>
-                                        <div class="ainfo">
-                                            <p>Sound Waves Diagram Activity</p><small>Class 9-A • 1 submission •
-                                                Due: 10
-                                                Mar
-                                                2026</small>
-                                        </div><span class="tag tg">Open</span>
-                                    </div>
+                                    <% } %>
+                                    <% if(pendingAsgns.isEmpty()) { %>
+                                        <div class="text-center py-4 text-muted">Aapka inbox saaf hai! Koi pending assignments nahi hain. ✨</div>
+                                    <% } %>
                                 </div>
                             </div>
+
                             <div class="cbox">
                                 <div class="chead"><i class="bi bi-check-circle-fill" style="color:var(--green)"></i>
-                                    <h6>Completed (8)</h6>
+                                    <h6>Completed (<%= completedAsgns.size() %>)</h6>
                                 </div>
                                 <div class="cbody">
+                                    <% for(Map<String, String> ca : completedAsgns) { %>
                                     <div class="arow">
-                                        <div class="aico" style="background:#dcfce7;color:#16a34a"><i
-                                                class="bi bi-check2-circle"></i>
-                                        </div>
+                                        <div class="aico" style="background:#dcfce7;color:#16a34a"><i class="bi bi-check2-circle"></i></div>
                                         <div class="ainfo">
-                                            <p>Chapter 5 — Force & Pressure</p><small>Class 9-A • Graded 20 Feb •
-                                                Avg:
-                                                78%</small>
-                                        </div><span class="tag tg">Graded ✓</span>
-                                    </div>
-                                    <div class="arow">
-                                        <div class="aico" style="background:#dcfce7;color:#16a34a"><i
-                                                class="bi bi-check2-circle"></i>
+                                            <p><%= ca.get("title") %></p><small>Class <%= ca.get("class") %> • Graded • <%= ca.get("subs") %> submissions</small>
                                         </div>
-                                        <div class="ainfo">
-                                            <p>Magnetic Effects Worksheet</p><small>Class 10-B • Graded 18 Feb •
-                                                Avg:
-                                                82%</small>
-                                        </div><span class="tag tg">Graded ✓</span>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <a href="/reviewSubmissions?assignment_id=<%= ca.get("id") %>" class="tag tb" style="text-decoration:none">Review</a>
+                                            <span class="tag tg">Graded ✓</span>
+                                        </div>
                                     </div>
+                                    <% } %>
+                                    <% if(completedAsgns.isEmpty()) { %>
+                                        <div class="text-center py-4 text-muted">Abhi tak koi completed assignments nahi hain.</div>
+                                    <% } %>
                                 </div>
                             </div>
                         </div>
@@ -2387,7 +2541,7 @@
                                     <h4>Results & Marks</h4>
                                     <p>Apni classes ke exam results enter karo</p>
                                 </div>
-                                <button class="btn-a"><i class="bi bi-upload"></i> Marks Upload Karo</button>
+                                <button class="btn-a" onclick="window.location.href='/uploadResults'"><i class="bi bi-upload"></i> Marks Upload Karo</button>
                             </div>
                             <div class="row g-3 mb-3">
                                 <div class="col-md-3">
@@ -2395,7 +2549,7 @@
                                         <div class="stat-ico" style="background:#dcfce7;color:#16a34a"><i
                                                 class="bi bi-trophy-fill"></i>
                                         </div>
-                                        <h3>82%</h3>
+                                        <h3><%= String.format("%.1f", classAvgPercent) %>%</h3>
                                         <p>Overall Average</p><span class="tag tg">All Classes</span>
                                     </div>
                                 </div>
@@ -2404,7 +2558,7 @@
                                         <div class="stat-ico" style="background:#dbeafe;color:#2563eb"><i
                                                 class="bi bi-star-fill"></i>
                                         </div>
-                                        <h3>18</h3>
+                                        <h3><%= totalDistinctions %></h3>
                                         <p>Distinctions</p><span class="tag tb">80%+</span>
                                     </div>
                                 </div>
@@ -2412,7 +2566,7 @@
                                     <div class="stat">
                                         <div class="stat-ico" style="background:#fee2e2;color:#dc2626"><i
                                                 class="bi bi-x-circle-fill"></i></div>
-                                        <h3>3</h3>
+                                        <h3><%= totalFailed %></h3>
                                         <p>Failed</p><span class="tag tr">Needs Help</span>
                                     </div>
                                 </div>
@@ -2421,14 +2575,14 @@
                                         <div class="stat-ico" style="background:#ede9fe;color:#7c3aed"><i
                                                 class="bi bi-people-fill"></i>
                                         </div>
-                                        <h3>118</h3>
+                                        <h3><%= totalStudentsCount %></h3>
                                         <p>Total Students</p>
                                     </div>
                                 </div>
                             </div>
                             <div class="cbox">
                                 <div class="chead">
-                                    <h6>Half-Yearly Results — Science</h6>
+                                    <h6>Performance Summary — <%= tSubject.replace(" Teacher", "") %></h6>
                                     <div class="ms-auto"><button class="btn-o"
                                             style="font-size:12px;padding:6px 14px"><i class="bi bi-download"></i>
                                             Export</button></div>
@@ -2447,50 +2601,25 @@
                                             </tr>
                                         </thead>
                                         <tbody>
+                                            <% for(Map<String, Object> r : resultsSummary) { 
+                                                String avg = (String)r.get("avg_perc");
+                                                String high = (String)r.get("highest");
+                                            %>
                                             <tr>
-                                                <td style="font-weight:700">Class 9-A</td>
-                                                <td>30</td>
-                                                <td>30</td>
-                                                <td style="color:#16a34a;font-weight:700">29</td>
-                                                <td style="color:var(--red);font-weight:700">1</td>
+                                                <td style="font-weight:700">Class <%= r.get("class") %></td>
+                                                <td><%= r.get("total_students") %></td>
+                                                <td><%= r.get("appeared") %></td>
+                                                <td style="color:#16a34a;font-weight:700"><%= r.get("passed") %></td>
+                                                <td style="color:var(--red);font-weight:700"><%= r.get("failed") %></td>
                                                 <td style="font-family:'JetBrains Mono',monospace;font-weight:700">
-                                                    86%
+                                                    <%= avg %>%
                                                 </td>
-                                                <td><span class="tag tg">96%</span></td>
+                                                <td><span class="tag tg"><%= high %>%</span></td>
                                             </tr>
-                                            <tr>
-                                                <td style="font-weight:700">Class 9-B</td>
-                                                <td>28</td>
-                                                <td>28</td>
-                                                <td style="color:#16a34a;font-weight:700">26</td>
-                                                <td style="color:var(--red);font-weight:700">2</td>
-                                                <td style="font-family:'JetBrains Mono',monospace;font-weight:700">
-                                                    79%
-                                                </td>
-                                                <td><span class="tag tb">91%</span></td>
-                                            </tr>
-                                            <tr>
-                                                <td style="font-weight:700">Class 10-A</td>
-                                                <td>32</td>
-                                                <td>32</td>
-                                                <td style="color:#16a34a;font-weight:700">32</td>
-                                                <td style="color:var(--red);font-weight:700">0</td>
-                                                <td style="font-family:'JetBrains Mono',monospace;font-weight:700">
-                                                    82%
-                                                </td>
-                                                <td><span class="tag tp">94%</span></td>
-                                            </tr>
-                                            <tr>
-                                                <td style="font-weight:700">Class 10-B</td>
-                                                <td>28</td>
-                                                <td>28</td>
-                                                <td style="color:#16a34a;font-weight:700">28</td>
-                                                <td style="color:var(--red);font-weight:700">0</td>
-                                                <td style="font-family:'JetBrains Mono',monospace;font-weight:700">
-                                                    84%
-                                                </td>
-                                                <td><span class="tag ty">93%</span></td>
-                                            </tr>
+                                            <% } %>
+                                            <% if(resultsSummary.isEmpty()) { %>
+                                                <tr><td colspan="7" class="text-center py-4 text-muted">Aapki classes ka koi result record nahi mila.</td></tr>
+                                            <% } %>
                                         </tbody>
                                     </table>
                                 </div>
@@ -2501,245 +2630,195 @@
                         <div class="page" id="page-leave">
                             <div class="pg-header">
                                 <div class="pg-header-left">
-                                    <h4>Leave Application</h4>
-                                    <p>Leave apply karo aur history dekho</p>
+                                    <h4>Leave Management</h4>
+                                    <p>Apne leaves track karo aur naye apply karo</p>
                                 </div>
-                                <button class="btn-a" onclick="openLeaveModal()"><i class="bi bi-plus-lg"></i> Naya
-                                    Leave
-                                    Apply
-                                    Karo</button>
+                                <button class="btn-a" onclick="openLeaveModal()"><i class="bi bi-plus-lg"></i> Naya Leave
+                                    Apply Karo</button>
                             </div>
 
-                            <!-- Leave Quota Hero -->
-                            <div class="leave-hero mb-4">
-                                <div
-                                    style="color:rgba(255,255,255,.45);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;font-weight:600">
-                                    Leave Balance — Session 2025-26</div>
-                                <div class="lq-grid">
-                                    <div class="lq-item avail">
-                                        <h3>12</h3>
-                                        <p>Available</p>
-                                    </div>
-                                    <div class="lq-item used">
-                                        <h3>5</h3>
-                                        <p>Used</p>
-                                    </div>
-                                    <div class="lq-item pending">
-                                        <h3>1</h3>
-                                        <p>Pending</p>
-                                    </div>
-                                    <div class="lq-item total">
-                                        <h3>18</h3>
-                                        <p>Total Allotted</p>
-                                    </div>
+                            <% 
+                                // Leave balance already fetched at top
+                                
+                                if (tId == null || tId.isEmpty()) {
+                                    out.println("<div class='alert alert-warning'>Teacher profile incomplete. Please update your profile to use leave features.</div>");
+                                } else {
+                            %>
+
+                            <div class="lq-grid mb-4">
+                                <div class="stat">
+                                    <div class="stat-ico" style="background:#dcfce7;color:#16a34a"><i
+                                            class="bi bi-calendar-check"></i></div>
+                                    <h3><%= totalLeaveAvailable %></h3>
+                                    <p>Available Leaves</p><span class="tag tg">Current Year</span>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-ico" style="background:#fee2e2;color:#dc2626"><i
+                                            class="bi bi-calendar-x"></i></div>
+                                    <h3><%= totalLeaveUsed %></h3>
+                                    <p>Used Leaves</p><span class="tag tr">Approved</span>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-ico" style="background:#fef3c7;color:#d97706"><i
+                                            class="bi bi-clock-history"></i></div>
+                                    <h3><%= pendingLeaveCount %></h3>
+                                    <p>Pending Requests</p><span class="tag ty">Wait for Admin</span>
+                                </div>
+                                <div class="stat">
+                                    <div class="stat-ico" style="background:#dbeafe;color:#2563eb"><i
+                                            class="bi bi-info-circle"></i></div>
+                                    <h3><%= totalLeaveAllotted %></h3>
+                                    <p>Total Allotted</p><span class="tag tb">Per Annum</span>
                                 </div>
                             </div>
 
-                            <!-- Leave Types -->
-                            <div class="cbox mb-4">
-                                <div class="chead"><i class="bi bi-list-check" style="color:var(--accent)"></i>
-                                    <h6>Leave Types & Balance</h6>
-                                </div>
-                                <div class="cbody">
-                                    <div class="row g-3">
-                                        <div class="col-6 col-md-3">
-                                            <div
-                                                style="border:1.5px solid var(--border);border-radius:14px;padding:18px;text-align:center">
-                                                <i class="bi bi-sun-fill"
-                                                    style="font-size:28px;color:#d97706;display:block;margin-bottom:10px"></i>
-                                                <div
-                                                    style="font-weight:800;font-size:22px;font-family:'JetBrains Mono',monospace;color:#d97706">
-                                                    8</div>
-                                                <div style="font-weight:700;font-size:13px;margin:2px 0">Casual
-                                                    Leave
-                                                </div>
-                                                <div style="font-size:11px;color:var(--muted)">Used: 2 | Total: 10
-                                                </div>
-                                            </div>
+                            <div class="row g-3">
+                                <div class="col-12 col-lg-4">
+                                    <div class="cbox">
+                                        <div class="chead"><i class="bi bi-pie-chart-fill" style="color:var(--accent)"></i>
+                                            <h6>Leave Types & Balance</h6>
                                         </div>
-                                        <div class="col-6 col-md-3">
-                                            <div
-                                                style="border:1.5px solid var(--border);border-radius:14px;padding:18px;text-align:center">
-                                                <i class="bi bi-hospital-fill"
-                                                    style="font-size:28px;color:#2563eb;display:block;margin-bottom:10px"></i>
-                                                <div
-                                                    style="font-weight:800;font-size:22px;font-family:'JetBrains Mono',monospace;color:#2563eb">
-                                                    4</div>
-                                                <div style="font-weight:700;font-size:13px;margin:2px 0">Medical
-                                                    Leave
+                                        <div class="cbody">
+                                            <div class="l-item">
+                                                <div class="li-info">
+                                                    <p>Casual Leave</p><small><%= casualUsed %> used / <%= casualTotal %> total</small>
                                                 </div>
-                                                <div style="font-size:11px;color:var(--muted)">Used: 2 | Total: 6
-                                                </div>
+                                                <div class="li-val"><%= (casualTotal - casualUsed) %></div>
                                             </div>
-                                        </div>
-                                        <div class="col-6 col-md-3">
-                                            <div
-                                                style="border:1.5px solid var(--border);border-radius:14px;padding:18px;text-align:center">
-                                                <i class="bi bi-award-fill"
-                                                    style="font-size:28px;color:#7c3aed;display:block;margin-bottom:10px"></i>
-                                                <div
-                                                    style="font-weight:800;font-size:22px;font-family:'JetBrains Mono',monospace;color:#7c3aed">
-                                                    0</div>
-                                                <div style="font-weight:700;font-size:13px;margin:2px 0">Earned
-                                                    Leave
+                                            <div class="l-item">
+                                                <div class="li-info">
+                                                    <p>Medical Leave</p><small><%= medicalUsed %> used / <%= medicalTotal %> total</small>
                                                 </div>
-                                                <div style="font-size:11px;color:var(--muted)">Used: 1 | Total: 2
-                                                </div>
+                                                <div class="li-val"><%= (medicalTotal - medicalUsed) %></div>
                                             </div>
-                                        </div>
-                                        <div class="col-6 col-md-3">
-                                            <div
-                                                style="border:1.5px solid var(--border);border-radius:14px;padding:18px;text-align:center">
-                                                <i class="bi bi-house-heart-fill"
-                                                    style="font-size:28px;color:#ec4899;display:block;margin-bottom:10px"></i>
-                                                <div
-                                                    style="font-weight:800;font-size:22px;font-family:'JetBrains Mono',monospace;color:#ec4899">
-                                                    0</div>
-                                                <div style="font-weight:700;font-size:13px;margin:2px 0">Special
-                                                    Leave
+                                            <div class="l-item">
+                                                <div class="li-info">
+                                                    <p>Earned Leave</p><small><%= earnedUsed %> used / <%= earnedTotal %> total</small>
                                                 </div>
-                                                <div style="font-size:11px;color:var(--muted)">Used: 0 | Total: 0
-                                                </div>
+                                                <div class="li-val"><%= (earnedTotal - earnedUsed) %></div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <!-- Leave History -->
-                            <div class="cbox">
-                                <div class="chead"><i class="bi bi-clock-history" style="color:var(--muted)"></i>
-                                    <h6>Leave History</h6>
-                                </div>
-                                <div class="cbody">
-
-                                    <!-- Pending -->
-                                    <div class="lhist">
-                                        <div class="lhist-ico" style="background:#fef3c7;color:#d97706"><i
-                                                class="bi bi-clock-fill"></i>
+                                <div class="col-12 col-lg-8">
+                                    <div class="cbox">
+                                        <div class="chead"><i class="bi bi-history" style="color:var(--purple)"></i>
+                                            <h6>Leave Application History</h6>
                                         </div>
-                                        <div class="lhist-info">
-                                            <p>Casual Leave — Personal Work</p>
-                                            <small>5 March 2026 (1 day) • Applied: 1 Mar 2026</small>
+                                        <div class="cbody p-0">
+                                            <div class="table-responsive">
+                                                <table class="table tbl mb-0">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Leave Type</th>
+                                                            <th>Duration</th>
+                                                            <th>Applied On</th>
+                                                            <th>Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <%
+                                                        boolean hasHistory = false;
+                                                        for(Map<String, String> lh : leaveHistory) {
+                                                            hasHistory = true;
+                                                            String status = lh.get("status");
+                                                            String statusClass = "approved".equalsIgnoreCase(status) ? "tg" : ("pending".equalsIgnoreCase(status) ? "ty" : "tr");
+                                                            String leaveType = lh.get("leave_type");
+                                                            String fromDate = lh.get("from_date");
+                                                            String toDate = lh.get("to_date");
+                                                            String daysStr = lh.get("days");
+                                                            int days = 0;
+                                                            try { days = Integer.parseInt(daysStr); } catch(Exception e) {}
+                                                            String appliedAt = lh.get("applied_at");
+                                                            String reason = lh.get("reason");
+                                                        %>
+                                                        <tr>
+                                                            <td>
+                                                                <div class="d-flex align-items-center gap-2">
+                                                                    <div class="l-ico" style="background:var(--bg);color:var(--accent)"><i class="bi bi-calendar-event"></i></div>
+                                                                    <div>
+                                                                        <p class="mb-0 fw-bold" style="font-size:13px"><%= leaveType %></p>
+                                                                        <small class="text-muted"><%= reason %></small>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <p class="mb-0" style="font-size:13px"><%= fromDate %> - <%= toDate %></p>
+                                                                <small class="text-muted">(<%= days %> day<%= days != 1 ? "s" : "" %>)</small>
+                                                            </td>
+                                                            <td style="font-size:13px"><%= appliedAt %></td>
+                                                            <td><span class="tag <%= statusClass %>"><%= status %></span></td>
+                                                        </tr>
+                                                        <% } 
+                                                        if(!hasHistory) { %>
+                                                        <tr>
+                                                            <td colspan="4" class="text-center py-4 text-muted">No leave applications found.</td>
+                                                        </tr>
+                                                        <% } %>
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
-                                        <div class="ldays">1 Day</div>
-                                        <span class="tag ty ms-3">Pending</span>
                                     </div>
-
-                                    <!-- Approved -->
-                                    <div class="lhist">
-                                        <div class="lhist-ico" style="background:#dcfce7;color:#16a34a"><i
-                                                class="bi bi-check-circle-fill"></i></div>
-                                        <div class="lhist-info">
-                                            <p>Medical Leave — Doctor Visit</p>
-                                            <small>14–15 Jan 2026 (2 days) • Approved by: Principal</small>
-                                        </div>
-                                        <div class="ldays">2 Days</div>
-                                        <span class="tag tg ms-3">Approved</span>
-                                    </div>
-
-                                    <div class="lhist">
-                                        <div class="lhist-ico" style="background:#dcfce7;color:#16a34a"><i
-                                                class="bi bi-check-circle-fill"></i></div>
-                                        <div class="lhist-info">
-                                            <p>Casual Leave — Family Function</p>
-                                            <small>20 Dec 2025 (1 day) • Approved by: Principal</small>
-                                        </div>
-                                        <div class="ldays">1 Day</div>
-                                        <span class="tag tg ms-3">Approved</span>
-                                    </div>
-
-                                    <div class="lhist">
-                                        <div class="lhist-ico" style="background:#dcfce7;color:#16a34a"><i
-                                                class="bi bi-check-circle-fill"></i></div>
-                                        <div class="lhist-info">
-                                            <p>Casual Leave — Personal</p>
-                                            <small>10 Nov 2025 (1 day) • Approved by: Vice Principal</small>
-                                        </div>
-                                        <div class="ldays">1 Day</div>
-                                        <span class="tag tg ms-3">Approved</span>
-                                    </div>
-
-                                    <!-- Rejected -->
-                                    <div class="lhist">
-                                        <div class="lhist-ico" style="background:#fee2e2;color:#dc2626"><i
-                                                class="bi bi-x-circle-fill"></i></div>
-                                        <div class="lhist-info">
-                                            <p>Earned Leave — Vacation</p>
-                                            <small>15–17 Oct 2025 (3 days) • Rejected: Exam week conflict</small>
-                                        </div>
-                                        <div class="ldays">3 Days</div>
-                                        <span class="tag tr ms-3">Rejected</span>
-                                    </div>
-
                                 </div>
                             </div>
+                            <%
+                                } // Close tId else
+                            %>
                         </div>
 
                         <!-- NOTICES -->
                         <div class="page" id="page-notices">
                             <div class="pg-header">
                                 <div class="pg-header-left">
-                                    <h4>Notices</h4>
+                                    <h4>Notice Board</h4>
                                     <p>School aur admin ki sabhi notifications</p>
                                 </div>
                             </div>
-                            <div class="cbox">
-                                <div class="chead"><i class="bi bi-megaphone-fill" style="color:var(--yellow)"></i>
-                                    <h6>Active Notices (3)</h6>
-                                </div>
-                                <div class="cbody">
-                                    <div
-                                        style="border-left:4px solid var(--accent);background:#f0fdf4;border-radius:12px;padding:14px;margin-bottom:10px">
-                                        <div class="d-flex justify-content-between align-items-start mb-1">
-                                            <h6 style="font-size:14px;font-weight:700;margin:0">Annual Sports Day —
-                                                10
-                                                March
-                                                2026</h6>
-                                            <span
-                                                style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">28
-                                                Feb 2026</span>
+                            <div class="row g-3">
+                                <% 
+                                Connection connNT = null;
+                                try {
+                                    connNT = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                                    String ntSql = "SELECT * FROM notices WHERE target IN ('all', 'teachers') AND student_id IS NULL ORDER BY published_at DESC";
+                                    ResultSet rsNT = connNT.createStatement().executeQuery(ntSql);
+                                    boolean hasNoticesT = false;
+                                    while(rsNT.next()) {
+                                        hasNoticesT = true;
+                                        String title = rsNT.getString("title");
+                                        String msg = rsNT.getString("message");
+                                        String priority = rsNT.getString("priority");
+                                        Timestamp time = rsNT.getTimestamp("published_at");
+                                        
+                                        String borderCol = "urgent".equals(priority) ? "var(--red)" : ("important".equals(priority) ? "var(--yellow)" : "var(--accent)");
+                                        String bgCol = "urgent".equals(priority) ? "#fff5f5" : ("important".equals(priority) ? "#fffbeb" : "#f0fdf4");
+                                        String tagClass = "urgent".equals(priority) ? "tag-red" : ("important".equals(priority) ? "tag-yellow" : "tag-green");
+                                %>
+                                <div class="col-12 notice-item" data-id="<%= rsNT.getString("notice_id") %>">
+                                    <div style="<%= "border-left:4px solid " + (borderCol) + "; background:" + (bgCol) + "; border-radius:12px; padding:20px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);" %>">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <h6 style="font-weight:800; margin:0; color:var(--dark); font-size:16px;"><%= title %></h6>
+                                            <span style="font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace;">
+                                                <%= new java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a").format(time) %>
+                                            </span>
                                         </div>
-                                        <p style="font-size:13px;color:var(--muted);margin:0">Sabhi teachers ko
-                                            sports
-                                            ground pe 7:30 AM
-                                            tak report karna hai. Class duties assigned kar di gayi hain.</p>
-                                        <span class="tag tg mt-2 d-inline-block">All Staff</span>
-                                    </div>
-                                    <div
-                                        style="border-left:4px solid var(--yellow);background:#fffbeb;border-radius:12px;padding:14px;margin-bottom:10px">
-                                        <div class="d-flex justify-content-between align-items-start mb-1">
-                                            <h6 style="font-size:14px;font-weight:700;margin:0">Half-Yearly Result
-                                                Submission Deadline
-                                            </h6>
-                                            <span
-                                                style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">25
-                                                Feb 2026</span>
-                                        </div>
-                                        <p style="font-size:13px;color:var(--muted);margin:0">Sabhi teachers apne
-                                            subject ke
-                                            marks 10
-                                            March tak portal pe upload kar dein.</p>
-                                        <span class="tag ty mt-2 d-inline-block">Teaching Staff</span>
-                                    </div>
-                                    <div
-                                        style="border-left:4px solid var(--red);background:#fff5f5;border-radius:12px;padding:14px">
-                                        <div class="d-flex justify-content-between align-items-start mb-1">
-                                            <h6 style="font-size:14px;font-weight:700;margin:0">Staff Meeting — 7
-                                                March
-                                                2026
-                                            </h6>
-                                            <span
-                                                style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">22
-                                                Feb 2026</span>
-                                        </div>
-                                        <p style="font-size:13px;color:var(--muted);margin:0">Monthly staff meeting
-                                            Friday 7
-                                            March ko
-                                            3:30 PM pe Conference Room mein hogi. Attendance mandatory hai.</p>
-                                        <span class="tag tr mt-2 d-inline-block">Mandatory</span>
+                                        <p style="font-size:14px; color:#4b5563; margin-bottom:12px; line-height:1.6;"><%= msg %></p>
+                                        <span class="tag <%= tagClass %>"><%= priority.toUpperCase() %></span>
                                     </div>
                                 </div>
+                                <% 
+                                    } 
+                                    if(!hasNoticesT) {
+                                %>
+                                <div class="col-12 text-center py-5">
+                                    <i class="bi bi-bell-slash" style="font-size:40px; color:var(--muted); opacity:0.3;"></i>
+                                    <p class="mt-3 text-muted">Abhi koi naya notice nahi hai.</p>
+                                </div>
+                                <%
+                                    }
+                                } catch(Exception e) { e.printStackTrace(); } finally { if(connNT != null) try { connNT.close(); } catch(Exception e) {} }
+                                %>
                             </div>
                         </div>
 
@@ -2838,7 +2917,7 @@
                     </div>
 
                     <!-- LEAVE APPLY MODAL -->
-                    <div class="lback" id="leaveModal" onclick="closeLeaveOutside(event)">
+                    <div class="mback" id="leaveModal" onclick="closeLeaveOutside(event)">
                         <div class="emodal">
                             <div class="ehead">
                                 <h5><i class="bi bi-calendar2-x-fill me-2" style="color:var(--red)"></i>Leave
@@ -2847,31 +2926,33 @@
                                 <button class="eclose" onclick="closeLeaveModal()">✕</button>
                             </div>
                             <div class="ebody">
-                                <div class="row g-3">
+                                <form action="/applyLeave" method="post">
+                                    <input type="hidden" name="leave_type" id="selected-leave-type" value="Casual">
+                                    <div class="row g-3">
                                     <div class="col-12">
                                         <label class="form-label">Leave Ka Type</label>
                                         <div class="row g-2">
                                             <div class="col-6 col-md-3">
-                                                <div class="ltype sel" onclick="selectLeaveType(this)"
+                                                <div class="ltype sel" onclick="selectLeaveType(this, 'Casual')"
                                                     style="padding:12px">
                                                     <i class="bi bi-sun-fill" style="color:#d97706"></i><span
                                                         style="font-size:12px">Casual</span>
                                                 </div>
                                             </div>
                                             <div class="col-6 col-md-3">
-                                                <div class="ltype" onclick="selectLeaveType(this)" style="padding:12px">
+                                                <div class="ltype" onclick="selectLeaveType(this, 'Medical')" style="padding:12px">
                                                     <i class="bi bi-hospital-fill" style="color:#2563eb"></i><span
                                                         style="font-size:12px">Medical</span>
                                                 </div>
                                             </div>
                                             <div class="col-6 col-md-3">
-                                                <div class="ltype" onclick="selectLeaveType(this)" style="padding:12px">
+                                                <div class="ltype" onclick="selectLeaveType(this, 'Earned')" style="padding:12px">
                                                     <i class="bi bi-award-fill" style="color:#7c3aed"></i><span
                                                         style="font-size:12px">Earned</span>
                                                 </div>
                                             </div>
                                             <div class="col-6 col-md-3">
-                                                <div class="ltype" onclick="selectLeaveType(this)" style="padding:12px">
+                                                <div class="ltype" onclick="selectLeaveType(this, 'Special')" style="padding:12px">
                                                     <i class="bi bi-house-heart-fill" style="color:#ec4899"></i><span
                                                         style="font-size:12px">Special</span>
                                                 </div>
@@ -2879,61 +2960,272 @@
                                         </div>
                                     </div>
                                     <div class="col-6"><label class="form-label">Start Date</label><input
-                                            class="form-control" type="date" /></div>
+                                            name="from_date" class="form-control" type="date" required /></div>
                                     <div class="col-6"><label class="form-label">End Date</label><input
-                                            class="form-control" type="date" /></div>
+                                            name="to_date" class="form-control" type="date" required /></div>
                                     <div class="col-12"><label class="form-label">Leave Ka Karan
-                                            (Reason)</label><textarea class="form-control" rows="3"
-                                            placeholder="Leave lene ka reason likhein..."></textarea>
+                                            (Reason)</label><textarea name="reason" class="form-control" rows="3"
+                                            placeholder="Leave lene ka reason likhein..." required></textarea>
                                     </div>
-                                    <div class="col-12">
-                                        <label class="form-label">Supporting Document (Optional)</label>
-                                        <div style="border:1.5px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer"
-                                            onclick="document.getElementById('leave-doc-input').click()">
-                                            <i class="bi bi-cloud-upload"
-                                                style="font-size:24px;color:var(--muted);display:block;margin-bottom:8px"></i>
-                                            <div style="font-size:13px;font-weight:600">Medical certificate ya
-                                                document
-                                                upload karo
-                                            </div>
-                                            <div style="font-size:12px;color:var(--muted)">PDF, JPG, PNG (Max 5MB)
-                                            </div>
-                                        </div>
-                                        <input type="file" id="leave-doc-input" style="display:none" />
-                                    </div>
+                                </div>
                                     <div class="col-12 d-flex gap-2 pt-1">
-                                        <button class="save-btn" onclick="submitLeave()"><i
+                                        <button type="submit" class="save-btn"><i
                                                 class="bi bi-send-fill me-1"></i>Leave
                                             Submit Karo</button>
-                                        <button onclick="closeLeaveModal()"
+                                        <button type="button" onclick="closeLeaveModal()"
                                             style="background:var(--bg);border:1.5px solid var(--border);border-radius:11px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
                                     </div>
                                 </div>
+                            </form>
+                        </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══════ MARK ATTENDANCE SELECTION MODAL ═══════ -->
+                    <div class="lback" id="markAttendanceModal" style="z-index: 9999;" onclick="if(event.target===this) window.closeMarkAttendanceModal()">
+                        <div class="lbox" style="max-width:450px; background:var(--card); border-radius:20px; overflow:hidden;">
+                            <div class="lt-head" style="padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                                <h5 style="margin:0; font-weight:700;"><i class="bi bi-clipboard-check-fill me-2" style="color:var(--accent);"></i> Attendance Selection</h5>
+                                <button onclick="window.closeMarkAttendanceModal()" style="background:none; border:none; font-size:20px; cursor:pointer;">✕</button>
+                            </div>
+                            <form action="/markAttendance" method="get">
+                                <div style="padding:20px;">
+                                    <div class="row g-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label" style="font-size:13px; font-weight:600; margin-bottom:8px; display:block;">Select Class</label>
+                                            <select name="class" class="form-select" required>
+                                                <option value="">Choose Class...</option>
+                                                <option value="1">Class 1</option>
+                                                <option value="2">Class 2</option>
+                                                <option value="3">Class 3</option>
+                                                <option value="4">Class 4</option>
+                                                <option value="5">Class 5</option>
+                                                <option value="6">Class 6</option>
+                                                <option value="7">Class 7</option>
+                                                <option value="8">Class 8</option>
+                                                <option value="9">Class 9</option>
+                                                <option value="10">Class 10</option>
+                                                <option value="11">Class 11</option>
+                                                <option value="12">Class 12</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <label class="form-label" style="font-size:13px; font-weight:600; margin-bottom:8px; display:block;">Select Section</label>
+                                            <select name="section" class="form-select" required>
+                                                <option value="A">Section A</option>
+                                                <option value="B">Section B</option>
+                                                <option value="C">Section C</option>
+                                                <option value="D">Section D</option>
+                                            </select>
+                                        </div>
+                                        <!-- Hidden Teacher ID from Session -->
+                                        <input type="hidden" name="teacher_id" value="<%= tId %>">
+                                    </div>
+                                </div>
+                                <div style="padding:20px; border-top:1px solid var(--border); background:#f8fafc; display:flex; gap:10px;">
+                                    <button type="submit" class="save-btn" style="flex:1;"><i class="bi bi-arrow-right-circle-fill me-1"></i> Proceed to Mark</button>
+                                    <button type="button" onclick="window.closeMarkAttendanceModal()" style="padding:12px 20px; border-radius:11px; background:white; border:1.5px solid var(--border); font-weight:600; font-size:14px; cursor:pointer;">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- CREATE ASSIGNMENT MODAL -->
+                    <div class="mback" id="assignmentModal" onclick="if(event.target===this) closeAssignmentModal()">
+                        <div class="emodal">
+                            <div class="ehead">
+                                <h5><i class="bi bi-clipboard-plus-fill me-2" style="color:var(--accent)"></i>Naya Assignment Do</h5>
+                                <button class="eclose" onclick="closeAssignmentModal()">✕</button>
+                            </div>
+                            <div class="ebody">
+                                <form action="/createAssignment" method="post" enctype="multipart/form-data" onsubmit="return validateAssignmentForm()">
+                                    <input type="hidden" name="teacher_id" value="<%= tId %>">
+                                    <div class="row g-3">
+                                        <div class="col-12">
+                                            <label class="form-label">Assignment Ka Title</label>
+                                            <input type="text" name="title" class="form-control" placeholder="E.g. Newton's Laws Worksheet" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Description / Instructions</label>
+                                            <textarea name="description" class="form-control" rows="3" placeholder="Assignment ke baare mein details likhein..." required></textarea>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">Select Class</label>
+                                            <select name="class" class="form-select" required>
+                                                <option value="">Chunain...</option>
+                                                <% 
+                                                    Set<String> uCls = new HashSet<>();
+                                                    for(Map<String, String> c : assignedClasses) uCls.add(c.get("class"));
+                                                    for(String cl : uCls) { 
+                                                %>
+                                                    <option value="<%= cl %>">Class <%= cl %></option>
+                                                <% } %>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">Select Section</label>
+                                            <select name="section" class="form-select" required>
+                                                <option value="">Chunain...</option>
+                                                <option value="A">Section A</option>
+                                                <option value="B">Section B</option>
+                                                <option value="C">Section C</option>
+                                                <option value="D">Section D</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">Subject</label>
+                                            <input type="text" name="subject" class="form-control" value="<%= tSubject != null ? tSubject.replace(" Teacher", "") : "" %>" required>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">Due Date</label>
+                                            <input type="date" name="due_date" class="form-control" required>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Attachment (Photo ya Document)</label>
+                                            <input type="file" name="file" class="form-control">
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">External Link (Optional)</label>
+                                            <input type="text" name="document_link" class="form-control" placeholder="E.g. Google Drive link">
+                                        </div>
+                                        <div class="col-12 d-flex gap-2 pt-2">
+                                            <button type="submit" class="save-btn"><i class="bi bi-plus-lg me-1"></i> Assignment Create Karo</button>
+                                            <button type="button" onclick="closeAssignmentModal()" style="background:var(--bg);border:1.5px solid var(--border);border-radius:11px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+                                        </div>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     </div>
 
+
+
                     <script
                         src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
                     <script>
+                        function openAssignmentModal() { document.getElementById('assignmentModal').classList.add('show'); document.body.style.overflow = 'hidden' }
+                        function closeAssignmentModal() { document.getElementById('assignmentModal').classList.remove('show'); document.body.style.overflow = '' }
+                        
+                        window.openMarkAttendanceModal = function() {
+                            const el = document.getElementById('markAttendanceModal');
+                            if(el) {
+                                el.style.display = 'flex';
+                                setTimeout(() => el.classList.add('show'), 10);
+                            }
+                        };
+                        window.closeMarkAttendanceModal = function() {
+                            const el = document.getElementById('markAttendanceModal');
+                            if(el) {
+                                el.classList.remove('show');
+                                setTimeout(() => el.style.display = 'none', 300);
+                            }
+                        };
                         const pageTitles = { dashboard: 'Dashboard', profile: 'My Profile', myclasses: 'My Classes', timetable: 'My Timetable', attendance: 'Mark Attendance', assignments: 'Assignments', results: 'Results & Marks', leave: 'Leave Application', notices: 'Notices' };
 
-                        function showPage(n, el) {
+                        window.showPage = function(pageId, el) {
+                            if (!pageId) return;
+                            const targetPage = document.getElementById('page-' + pageId);
+                            if (!targetPage) return;
+
+                            // Hide all pages
                             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-                            document.getElementById('page-' + n).classList.add('active');
+                            // Show target page
+                            targetPage.classList.add('active');
+
+                            // Update sidebar links
                             document.querySelectorAll('.s-link').forEach(l => l.classList.remove('active'));
-                            if (el) el.classList.add('active');
-                            document.getElementById('page-title').textContent = pageTitles[n] || n;
-                            document.getElementById('sidebar').classList.remove('open');
+                            if (el) {
+                                el.classList.add('active');
+                            } else {
+                                const link = document.querySelector(`.s-link[data-page="${pageId}"]`);
+                                if (link) link.classList.add('active');
+                            }
+
+                            // Update title
+                            const titleEl = document.getElementById('page-title');
+                            if (titleEl) titleEl.textContent = pageTitles[pageId] || pageId;
+
+                            // Mark notices as seen if page is notices
+                            if (pageId === 'notices') {
+                                markNoticesAsSeen();
+                            }
+
+                            // Close sidebar on mobile
+                            const sidebar = document.getElementById('sidebar');
+                            if (sidebar) sidebar.classList.remove('open');
+
+                            // Sync URL
+                            const url = new URL(window.location.href);
+                            if (url.searchParams.get('page') !== pageId) {
+                                url.searchParams.set('page', pageId);
+                                window.history.replaceState({}, '', url);
+                            }
+                        };
+
+                        function markNoticesAsSeen() {
+                            const notices = document.querySelectorAll('.notice-item');
+                            let seenIds = JSON.parse(localStorage.getItem('seen_notices') || '[]');
+                            let newlySeen = false;
+
+                            notices.forEach(n => {
+                                const id = n.getAttribute('data-id');
+                                if (!seenIds.includes(id)) {
+                                    seenIds.push(id);
+                                    newlySeen = true;
+                                }
+                            });
+
+                            if (newlySeen) {
+                                localStorage.setItem('seen_notices', JSON.stringify(seenIds));
+                                updateNoticeBadge();
+                            }
                         }
 
-                        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open') }
+                        function updateNoticeBadge() {
+                            const badge = document.getElementById('sidebar-notif-count');
+                            if (!badge) return;
 
-                        function openEditModal() { document.getElementById('editModal').classList.add('show'); document.body.style.overflow = 'hidden' }
-                        function closeEditModal() { document.getElementById('editModal').classList.remove('show'); document.body.style.overflow = '' }
-                        function closeEditOutside(e) { if (e.target === document.getElementById('editModal')) closeEditModal() }
+                            const totalCount = parseInt(badge.getAttribute('data-total') || '${noticesCount}');
+                            if (isNaN(totalCount)) return;
 
-                        function previewImage(input) {
+                            let seenIds = JSON.parse(localStorage.getItem('seen_notices') || '[]');
+                            const notices = document.querySelectorAll('.notice-item');
+                            let visibleSeenCount = 0;
+
+                            notices.forEach(n => {
+                                if (seenIds.includes(n.getAttribute('data-id'))) {
+                                    visibleSeenCount++;
+                                }
+                            });
+
+                            const unreadCount = Math.max(0, totalCount - visibleSeenCount);
+                            badge.textContent = unreadCount;
+                            if (unreadCount <= 0) {
+                                badge.style.display = 'none';
+                            } else {
+                                badge.style.display = 'inline-block';
+                            }
+                        }
+
+                        // Initial badge update
+                        window.addEventListener('DOMContentLoaded', () => {
+                            const badge = document.getElementById('sidebar-notif-count');
+                            if (badge) {
+                                badge.setAttribute('data-total', '${noticesCount}');
+                                updateNoticeBadge();
+                            }
+                        });
+
+                        window.toggleSidebar = function() {
+                            const sidebar = document.getElementById('sidebar');
+                            if (sidebar) sidebar.classList.toggle('open');
+                        };
+
+                        window.openEditModal = function() { document.getElementById('editModal').classList.add('show'); document.body.style.overflow = 'hidden' }
+                        window.closeEditModal = function() { document.getElementById('editModal').classList.remove('show'); document.body.style.overflow = '' }
+                        window.closeEditOutside = function(e) { if (e.target === document.getElementById('editModal')) closeEditModal() }
+
+                        window.previewImage = function(input) {
                             if (input.files && input.files[0]) {
                                 const reader = new FileReader();
                                 reader.onload = function (e) {
@@ -2943,11 +3235,11 @@
                             }
                         }
 
-                        function openLeaveModal() { document.getElementById('leaveModal').classList.add('show'); document.body.style.overflow = 'hidden' }
-                        function closeLeaveModal() { document.getElementById('leaveModal').classList.remove('show'); document.body.style.overflow = '' }
-                        function closeLeaveOutside(e) { if (e.target === document.getElementById('leaveModal')) closeLeaveModal() }
+                        window.openLeaveModal = function() { document.getElementById('leaveModal').classList.add('show'); document.body.style.overflow = 'hidden' }
+                        window.closeLeaveModal = function() { document.getElementById('leaveModal').classList.remove('show'); document.body.style.overflow = '' }
+                        window.closeLeaveOutside = function(e) { if (e.target === document.getElementById('leaveModal')) closeLeaveModal() }
 
-                        function handleAvatarChange(input) {
+                        window.handleAvatarChange = function(input) {
                             if (!input.files || !input.files[0]) return;
                             const reader = new FileReader();
                             reader.onload = e => {
@@ -2959,22 +3251,65 @@
                             reader.readAsDataURL(input.files[0]);
                         }
 
+                        // Centralized Event Listener for Sidebar
+                        document.addEventListener('click', function(e) {
+                            const link = e.target.closest('.s-link');
+                            if (link && link.hasAttribute('data-page')) {
+                                e.preventDefault();
+                                showPage(link.getAttribute('data-page'), link);
+                            }
+                        });
+
+                        window.addEventListener('load', function() {
+                            const urlParams = new URLSearchParams(window.location.search);
+                            
+                            // Notifications
+                            if (urlParams.has('success')) {
+                                const success = urlParams.get('success');
+                                if (success === 'assignment_created') alert('✅ Assignment create ho gaya!');
+                                else if (success === 'attendance_marked') alert('✅ Attendance save ho gayi!');
+                                else if (success === 'graded') alert('✅ Submission grade ho gayi!');
+                                else showToast('✅ Success!');
+                            }
+                            
+                            if (urlParams.has('error')) {
+                                alert('❌ Kuch error aa gaya. Phir se try karein.');
+                            }
+                            
+                            // Initial Page Routing
+                            const page = urlParams.get('page') || 'dashboard';
+                            showPage(page);
+
+                            if (typeof updateDynamicDates === 'function') updateDynamicDates();
+                        });
+
+                        // Client-side validation for Assignment Form
+                        function validateAssignmentForm() {
+                            const title = document.querySelector('input[name="title"]').value;
+                            if (!title || title.trim() === "") {
+                                alert("⚠️ Kripya Title likhein!");
+                                return false;
+                            }
+                            return true;
+                        }
 
                         function submitLeave() {
                             closeLeaveModal();
                             showToast('Leave application submit ho gayi! Admin review karega. ✓');
                         }
 
-                        function selectClass(el, name) {
-                            document.querySelectorAll('#page-attendance .ltype').forEach(e => e.classList.remove('sel'));
-                            el.classList.add('sel');
-                            const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-                            document.getElementById('att-class-title').innerHTML = 'Class ' + name + ' — Attendance (<span id="att-date-val">' + dateStr + '</span>)';
+                        function selectClassAndReload(cls, sec) {
+                            const url = new URL(window.location.href);
+                            url.searchParams.set('page', 'attendance');
+                            url.searchParams.set('class', cls);
+                            url.searchParams.set('section', sec);
+                            window.location.href = url.toString();
                         }
 
-                        function selectLeaveType(el) {
+                        function selectLeaveType(el, type) {
                             document.querySelectorAll('#leaveModal .ltype').forEach(e => e.classList.remove('sel'));
                             el.classList.add('sel');
+                            document.getElementById('selected-leave-type').value = type;
                         }
 
                         function markAll(val) {

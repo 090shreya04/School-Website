@@ -3,11 +3,12 @@
     <% if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; } Object
       userId=session.getAttribute("user_id"); String sName="Student" ; String sClass="Class - | No Profile" ; String
       sInitials="S" ; String sPhotoBase64=null; String sDob="" , sGender="" , sBlood="" , sPhone="" , sEmail="" ,
-      sAddress="" , sRoll="" , sClassName="" , sSection="" , sStatus="" ; Connection conn=null; PreparedStatement
+      sAddress="" , sRoll="" , sClassName="" , sSection="" , sStatus="" ; int sId = 0; Connection conn=null; PreparedStatement
       pstmt=null; ResultSet rs=null; try { Class.forName("com.mysql.cj.jdbc.Driver");
       conn=DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root" , "" ); String
       sql="SELECT u.name, s.* FROM user u LEFT JOIN students s ON u.user_id = s.user_id WHERE u.user_id = ?" ;
       pstmt=conn.prepareStatement(sql); pstmt.setObject(1, userId); rs=pstmt.executeQuery(); if (rs.next()) {
+      sId = rs.getInt("student_id");
       sName=rs.getString("name"); sClassName=rs.getString("class"); sRoll=rs.getString("roll_no");
       sDob=rs.getString("dob"); sGender=rs.getString("gender"); sBlood=rs.getString("blood_group");
       sPhone=rs.getString("phone"); sEmail=rs.getString("email"); sAddress=rs.getString("address");
@@ -33,7 +34,6 @@
         if (conn != null) try { conn.close(); } catch(Exception e) {}
         }
 
-        // Conditional Display Logic for Profile Sections
         boolean hasPersonalInfo = (sName != null && !sName.trim().isEmpty())
         && (sDob != null && !sDob.trim().isEmpty())
         && (sGender != null && !sGender.trim().isEmpty())
@@ -44,6 +44,53 @@
         && (sRoll != null && !sRoll.trim().isEmpty())
         && (sClassName != null && !sClassName.trim().isEmpty())
         && (sSection != null && !sSection.trim().isEmpty());
+
+        // Dynamic Stats for Dashboard
+        int totP=0, totA=0, totL=0, totW=0;
+        double overallResPerc = 0;
+        int pendingAsgnCount = 0;
+        int unreadNotices = 0;
+
+        try {
+            Connection connMain = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+            
+            // Attendance Stats
+            String attSql = "SELECT status, COUNT(*) as count FROM attendance WHERE student_id = ? GROUP BY status";
+            PreparedStatement psAtt = connMain.prepareStatement(attSql);
+            psAtt.setInt(1, sId);
+            ResultSet rsA = psAtt.executeQuery();
+            while(rsA.next()){
+                String st = rsA.getString("status");
+                int c = rsA.getInt("count");
+                if("present".equals(st)) totP = c;
+                else if("absent".equals(st)) totA = c;
+                else if("leave".equals(st)) totL = c;
+            }
+            
+            // Fetch Working Days from settings
+            ResultSet rsS = connMain.createStatement().executeQuery("SELECT config_value FROM settings WHERE config_key='working_days_year'");
+            if(rsS.next()) totW = rsS.getInt(1);
+            else totW = totP + totA + totL; // Fallback
+
+            // Results Stats
+            String resSql = "SELECT AVG(marks_obtained*100.0/total_marks) as avg_p FROM results WHERE student_id = ?";
+            PreparedStatement psRes = connMain.prepareStatement(resSql);
+            psRes.setInt(1, sId);
+            ResultSet rsR = psRes.executeQuery();
+            if(rsR.next()) overallResPerc = rsR.getDouble("avg_p");
+
+            // Pending Assignments
+            String asgnSql = "SELECT COUNT(*) FROM assignments WHERE (class = ? AND section = ?) " +
+                           "AND assignment_id NOT IN (SELECT assignment_id FROM assignment_submissions WHERE student_id = ?)";
+            PreparedStatement psAsgn = connMain.prepareStatement(asgnSql);
+            psAsgn.setString(1, sClassName);
+            psAsgn.setString(2, sSection);
+            psAsgn.setInt(3, sId);
+            ResultSet rsAsgn = psAsgn.executeQuery();
+            if(rsAsgn.next()) pendingAsgnCount = rsAsgn.getInt(1);
+
+            connMain.close();
+        } catch(Exception e) {}
         %>
         <!DOCTYPE html>
         <html lang="en">
@@ -1074,7 +1121,7 @@
               <div class="s-nav-item">
                 <a class="s-nav-link" onclick="showPage('assignments', this)">
                   <i class="bi bi-clipboard2-check-fill"></i> Assignments
-                  <span class="s-badge alert">3</span>
+                  <% if(pendingAsgnCount > 0) { %><span class="s-badge alert"><%= pendingAsgnCount %></span><% } %>
                 </a>
               </div>
               <div class="s-nav-item">
@@ -1136,9 +1183,9 @@
                     <div class="stat-ico" style="background:#ede9fe; color:#7c3aed;"><i
                         class="bi bi-graph-up-arrow"></i>
                     </div>
-                    <h3>78.4%</h3>
+                    <h3><%= String.format("%.1f", overallResPerc) %>%</h3>
                     <p>Overall Score</p>
-                    <span class="tag tag-purple">↑ 4.2% last exam</span>
+                    <span class="tag tag-purple">Latest Result</span>
                   </div>
                 </div>
                 <div class="col-6 col-xl-3">
@@ -1146,9 +1193,9 @@
                     <div class="stat-ico" style="background:#d1fae5; color:#059669;"><i
                         class="bi bi-calendar-check-fill"></i>
                     </div>
-                    <h3>91%</h3>
+                    <h3><%= totW > 0 ? String.format("%.0f", totP*100.0/totW) : 0 %>%</h3>
                     <p>Attendance</p>
-                    <span class="tag tag-green">Good Standing</span>
+                    <span class="tag tag-green">Good job!</span>
                   </div>
                 </div>
                 <div class="col-6 col-xl-3">
@@ -1156,18 +1203,18 @@
                     <div class="stat-ico" style="background:#fef3c7; color:#d97706;"><i
                         class="bi bi-clipboard2-check-fill"></i>
                     </div>
-                    <h3>3</h3>
+                    <h3><%= pendingAsgnCount %></h3>
                     <p>Pending Tasks</p>
-                    <span class="tag tag-yellow">Due this week</span>
+                    <span class="tag tag-yellow"><%= pendingAsgnCount > 0 ? "Complete soon" : "All caught up" %></span>
                   </div>
                 </div>
                 <div class="col-6 col-xl-3">
                   <div class="stat">
                     <div class="stat-ico" style="background:#dbeafe; color:#2563eb;"><i class="bi bi-trophy-fill"></i>
                     </div>
-                    <h3>#8</h3>
+                    <h3>#?</h3>
                     <p>Class Rank</p>
-                    <span class="tag tag-blue">Out of 42</span>
+                    <span class="tag tag-blue">Keep it up!</span>
                   </div>
                 </div>
               </div>
@@ -1240,32 +1287,42 @@
                       <h6>Upcoming Assignments</h6>
                     </div>
                     <div class="card-body-p">
+                      <%
+                        try {
+                            Connection connDA = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                            String upSql = "SELECT * FROM assignments WHERE class = ? AND section = ? AND assignment_id NOT IN (SELECT assignment_id FROM assignment_submissions WHERE student_id = ?) ORDER BY due_date ASC LIMIT 3";
+                            PreparedStatement psUA = connDA.prepareStatement(upSql);
+                            psUA.setString(1, sClassName);
+                            psUA.setString(2, sSection);
+                            psUA.setInt(3, sId);
+                            ResultSet rsUA = psUA.executeQuery();
+                            boolean hasUA = false;
+                            while(rsUA.next()) {
+                                hasUA = true;
+                                String sub = rsUA.getString("subject");
+                                String icon = "bi-journal-text";
+                                String color = "#6366f1";
+                                if(sub.toLowerCase().contains("math")) { icon = "bi-calculator-fill"; color="#f59e0b"; }
+                                else if(sub.toLowerCase().contains("scien")) { icon = "bi-flask-fill"; color="#10b981"; }
+                                else if(sub.toLowerCase().contains("eng")) { icon = "bi-translate"; color="#3b82f6"; }
+                      %>
                       <div class="assignment-row">
-                        <div class="asgn-icon" style="background:#fef3c7;color:#d97706;"><i
-                            class="bi bi-calculator-fill"></i>
-                        </div>
+                        <div class="asgn-icon" style="background:<%= color %>15;color:<%= color %>;"><i class="bi <%= icon %>"></i></div>
                         <div class="asgn-info">
-                          <p>Algebra Chapter 7 Exercise</p><small>Mathematics • 3 Mar 2026</small>
+                          <p><%= rsUA.getString("title") %></p><small><%= sub %> • Due: <%= rsUA.getString("due_date") %></small>
                         </div>
-                        <span class="tag tag-red">Urgent</span>
+                        <span class="tag tag-blue">Open</span>
                       </div>
-                      <div class="assignment-row">
-                        <div class="asgn-icon" style="background:#d1fae5;color:#059669;"><i
-                            class="bi bi-flask-fill"></i>
-                        </div>
-                        <div class="asgn-info">
-                          <p>Lab Report – Acid-Base</p><small>Science • 5 Mar 2026</small>
-                        </div>
-                        <span class="tag tag-yellow">Soon</span>
-                      </div>
-                      <div class="assignment-row">
-                        <div class="asgn-icon" style="background:#dbeafe;color:#2563eb;"><i class="bi bi-translate"></i>
-                        </div>
-                        <div class="asgn-info">
-                          <p>Essay: My Favourite Season</p><small>English • 7 Mar 2026</small>
-                        </div>
-                        <span class="tag tag-green">Open</span>
-                      </div>
+                      <% 
+                            }
+                            if(!hasUA) {
+                      %>
+                        <div class="text-center py-4 text-muted">Aish karo! Koi kaam nahi hai. 🥳</div>
+                      <%
+                            }
+                            connDA.close();
+                        } catch(Exception e) {}
+                      %>
                     </div>
                   </div>
                 </div>
@@ -1279,33 +1336,44 @@
                     </div>
                     <div class="card-body-p">
                       <div class="row g-2">
-                        <div class="col-md-4">
-                          <div class="time-slot">
-                            <span class="time-text">8:00 – 9:00</span>
-                            <div class="slot-info">
-                              <p>Mathematics</p><small>Mr. Ramesh Gupta</small>
+                        <%
+                          try {
+                            Connection connSD = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                            String todayDayS = new java.text.SimpleDateFormat("EEEE").format(new java.util.Date());
+                            String sFullClass = sClassName + "-" + sSection;
+                            String ttTodaySqlS = "SELECT tt.*, t.name as teacher_name FROM timetable tt LEFT JOIN teachers t ON tt.teacher_id = t.teacher_id WHERE tt.class = ? AND tt.day = ? ORDER BY tt.start_time";
+                            PreparedStatement psTTS = connSD.prepareStatement(ttTodaySqlS);
+                            psTTS.setString(1, sFullClass);
+                            psTTS.setString(2, todayDayS);
+                            ResultSet rsTTSD = psTTS.executeQuery();
+                            boolean hasTodayTTS = false;
+                            while(rsTTSD.next()) {
+                                hasTodayTTS = true;
+                                String sTimeS = rsTTSD.getString("start_time").substring(0,5);
+                                String eTimeS = rsTTSD.getString("end_time").substring(0,5);
+                                String subS = rsTTSD.getString("subject");
+                                String tnameS = rsTTSD.getString("teacher_name");
+                                String roomS = rsTTSD.getString("room");
+                        %>
+                          <div class="col-md-4">
+                            <div class="time-slot">
+                              <span class="time-text"><%= sTimeS %> – <%= eTimeS %></span>
+                              <div class="slot-info">
+                                <p><%= subS %></p><small><%= tnameS != null ? tnameS : "Teacher" %></small>
+                              </div>
+                              <span class="slot-room">Room <%= roomS %></span>
                             </div>
-                            <span class="slot-room">R-201</span>
                           </div>
-                        </div>
-                        <div class="col-md-4">
-                          <div class="time-slot active-slot">
-                            <span class="time-text">9:05 – 10:05</span>
-                            <div class="slot-info">
-                              <p>Science ✦ Now</p><small>Mrs. Priya Joshi</small>
-                            </div>
-                            <span class="slot-room">Lab-1</span>
-                          </div>
-                        </div>
-                        <div class="col-md-4">
-                          <div class="time-slot">
-                            <span class="time-text">10:15 – 11:15</span>
-                            <div class="slot-info">
-                              <p>English</p><small>Mr. David Abraham</small>
-                            </div>
-                            <span class="slot-room">R-204</span>
-                          </div>
-                        </div>
+                        <%
+                            }
+                            if(!hasTodayTTS) {
+                        %>
+                          <div class="col-12 text-center py-4 text-muted">Aaj koi classes nahi hain. Mauj karo! 🥳</div>
+                        <%
+                            }
+                            connSD.close();
+                          } catch(Exception e) {}
+                        %>
                       </div>
                     </div>
                   </div>
@@ -1469,39 +1537,58 @@
                   <p>Apni monthly attendance track karo</p>
                 </div>
               </div>
+              <%
+                List<Map<String, Object>> monthlyAtt = new ArrayList<>();
+                Connection connAtt = null;
+                try {
+                    connAtt = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                    
+                    // 2. Monthly Summary
+                    String monthSql = "SELECT MONTHNAME(date) as month, YEAR(date) as year, COUNT(*) as working, " +
+                                     "SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) as pres, " +
+                                     "SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END) as abs, " +
+                                     "SUM(CASE WHEN status='leave' THEN 1 ELSE 0 END) as lve " +
+                                     "FROM attendance WHERE student_id = ? " +
+                                     "GROUP BY year, month, MONTH(date) " +
+                                     "ORDER BY year DESC, MONTH(date) DESC";
+                    PreparedStatement psMonth = connAtt.prepareStatement(monthSql);
+                    psMonth.setInt(1, sId);
+                    ResultSet rsMonth = psMonth.executeQuery();
+                    while(rsMonth.next()) {
+                        Map<String, Object> m = new HashMap<>();
+                        m.put("name", rsMonth.getString("month") + " " + rsMonth.getString("year"));
+                        m.put("working", rsMonth.getInt("working"));
+                        m.put("present", rsMonth.getInt("pres"));
+                        m.put("absent", rsMonth.getInt("abs"));
+                        m.put("leave", rsMonth.getInt("lve"));
+                        monthlyAtt.add(m);
+                    }
+                } catch(Exception e) { e.printStackTrace(); }
+                finally { if(connAtt != null) connAtt.close(); }
+                
+                double overallPerc = totW > 0 ? (totP * 100.0 / totW) : 0;
+              %>
               <div class="row g-3 mb-3">
-                <div class="col-6 col-md-3">
+                <div class="col-12 col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#d1fae5;color:#059669;"><i
-                        class="bi bi-check-circle-fill"></i>
-                    </div>
-                    <h3>164</h3>
-                    <p>Total Present</p><span class="tag tag-green">91%</span>
+                    <div class="stat-ico" style="background:#d1fae5;color:#059669;"><i class="bi bi-check-circle-fill"></i></div>
+                    <h3><%= totP %></h3>
+                    <p>Total Present</p><span class="tag tag-green"><%= totW > 0 ? String.format("%.1f", totP * 100.0 / totW) : 0 %>%</span>
                   </div>
                 </div>
-                <div class="col-6 col-md-3">
+                <div class="col-12 col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#fee2e2;color:#dc2626;"><i class="bi bi-x-circle-fill"></i>
-                    </div>
-                    <h3>16</h3>
-                    <p>Total Absent</p><span class="tag tag-red">8.9%</span>
+                    <div class="stat-ico" style="background:#fee2e2;color:#dc2626;"><i class="bi bi-x-circle-fill"></i></div>
+                    <h3><%= totA %></h3>
+                    <p>Total Absent</p><span class="tag tag-red"><%= totW > 0 ? String.format("%.1f", totA * 100.0 / totW) : 0 %>%</span>
                   </div>
                 </div>
-                <div class="col-6 col-md-3">
+                <div class="col-12 col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#fef3c7;color:#d97706;"><i
-                        class="bi bi-dash-circle-fill"></i>
-                    </div>
-                    <h3>4</h3>
-                    <p>Leave</p><span class="tag tag-yellow">Approved</span>
-                  </div>
-                </div>
-                <div class="col-6 col-md-3">
-                  <div class="stat">
-                    <div class="stat-ico" style="background:#dbeafe;color:#2563eb;"><i class="bi bi-calendar3"></i>
-                    </div>
-                    <h3>184</h3>
+                    <div class="stat-ico" style="background:#dbeafe;color:#2563eb;"><i class="bi bi-calendar3"></i></div>
+                    <h3><%= totW %></h3>
                     <p>Total Working Days</p>
+                    <span class="tag tag-blue">Academic Year</span>
                   </div>
                 </div>
               </div>
@@ -1522,46 +1609,26 @@
                       </tr>
                     </thead>
                     <tbody>
+                      <% for(Map<String, Object> m : monthlyAtt) { 
+                          int w = (int)m.get("working");
+                          int p = (int)m.get("present");
+                          double perc = w > 0 ? (p * 100.0 / w) : 0;
+                          String status = "Excellent", color = "var(--green)", tag = "tag-green";
+                          if(perc < 75) { status = "Shortage"; color = "var(--red)"; tag = "tag-red"; }
+                          else if(perc < 85) { status = "Average"; color = "var(--yellow)"; tag = "tag-yellow"; }
+                          else if(perc < 95) { status = "Good"; color = "var(--green)"; tag = "tag-green"; }
+                      %>
                       <tr>
-                        <td>April 2025</td>
-                        <td>26</td>
-                        <td>25</td>
-                        <td>1</td>
-                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--green);">96%</td>
-                        <td><span class="tag tag-green">Excellent</span></td>
+                        <td><%= m.get("name") %></td>
+                        <td><%= w %></td>
+                        <td><%= p %></td>
+                        <td><%= m.get("absent") %></td>
+                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:<%= color %>;"><%= String.format("%.0f", perc) %>%</td>
+                        <td><span class="tag <%= tag %>"><%= status %></span></td>
                       </tr>
-                      <tr>
-                        <td>May 2025</td>
-                        <td>24</td>
-                        <td>22</td>
-                        <td>2</td>
-                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--green);">92%</td>
-                        <td><span class="tag tag-green">Good</span></td>
-                      </tr>
-                      <tr>
-                        <td>June 2025</td>
-                        <td>22</td>
-                        <td>19</td>
-                        <td>3</td>
-                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--yellow);">86%</td>
-                        <td><span class="tag tag-yellow">Average</span></td>
-                      </tr>
-                      <tr>
-                        <td>July 2025</td>
-                        <td>26</td>
-                        <td>25</td>
-                        <td>1</td>
-                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--green);">96%</td>
-                        <td><span class="tag tag-green">Excellent</span></td>
-                      </tr>
-                      <tr>
-                        <td>Feb 2026</td>
-                        <td>20</td>
-                        <td>17</td>
-                        <td>3</td>
-                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--yellow);">85%</td>
-                        <td><span class="tag tag-yellow">Average</span></td>
-                      </tr>
+                      <% } if(monthlyAtt.isEmpty()) { %>
+                        <tr><td colspan="6" class="text-center py-4 text-muted">Aapki attendance ka koi record nahi mila.</td></tr>
+                      <% } %>
                     </tbody>
                   </table>
                 </div>
@@ -1576,35 +1643,111 @@
                   <p>Apne saare exam results dekho</p>
                 </div>
               </div>
+              <%
+                Map<String, List<Map<String, Object>>> groupedResults = new LinkedHashMap<>();
+                double totalObtAll = 0, totalMaxAll = 0;
+                String bestSub = "N/A"; double bestSubPerc = -1;
+                int classRank = 0;
+
+                Connection connRes = null;
+                try {
+                    connRes = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                    String resSql = "SELECT * FROM results WHERE student_id = ? ORDER BY exam_date DESC, subject ASC";
+                    PreparedStatement psRes = connRes.prepareStatement(resSql);
+                    psRes.setInt(1, sId);
+                    ResultSet rsRes = psRes.executeQuery();
+                    while(rsRes.next()) {
+                        String type = rsRes.getString("exam_type");
+                        if(!groupedResults.containsKey(type)) groupedResults.put(type, new ArrayList<>());
+                        
+                        double obt = rsRes.getDouble("marks_obtained");
+                        double max = rsRes.getDouble("total_marks");
+                        String sub = rsRes.getString("subject");
+                        
+                        Map<String, Object> r = new HashMap<>();
+                        r.put("subject", sub);
+                        r.put("max", max);
+                        r.put("obt", obt);
+                        groupedResults.get(type).add(r);
+                        
+                        totalObtAll += obt;
+                        totalMaxAll += max;
+                        
+                        double p = max > 0 ? (obt*100.0/max) : 0;
+                        if(p > bestSubPerc) {
+                            bestSubPerc = p;
+                            bestSub = sub;
+                        }
+                    }
+                    
+                    // 10. Calculate Class Rank
+                    if(sClassName != null && sSection != null) {
+                        String rankSql = "SELECT student_id, AVG(marks_obtained*100.0/total_marks) as avg_p " +
+                                       "FROM results WHERE student_id IN (SELECT student_id FROM students WHERE class = ? AND section = ?) " +
+                                       "GROUP BY student_id ORDER BY avg_p DESC";
+                        PreparedStatement psRank = connRes.prepareStatement(rankSql);
+                        psRank.setString(1, sClassName);
+                        psRank.setString(2, sSection);
+                        ResultSet rsRank = psRank.executeQuery();
+                        int currentPos = 1;
+                        while(rsRank.next()) {
+                            if(rsRank.getInt("student_id") == sId) {
+                                classRank = currentPos;
+                                break;
+                            }
+                            currentPos++;
+                        }
+                    }
+                    pageContext.setAttribute("classRank", classRank > 0 ? "#" + classRank : "N/A");
+                } catch(Exception e) { e.printStackTrace(); }
+                finally { if(connRes != null) connRes.close(); }
+                
+                overallResPerc = totalMaxAll > 0 ? (totalObtAll * 100.0 / totalMaxAll) : 0;
+                String overallGrade = "F";
+                if(overallResPerc >= 90) overallGrade = "A+";
+                else if(overallResPerc >= 80) overallGrade = "A";
+                else if(overallResPerc >= 70) overallGrade = "B+";
+                else if(overallResPerc >= 60) overallGrade = "B";
+                else if(overallResPerc >= 50) overallGrade = "C";
+                else if(overallResPerc >= 40) overallGrade = "D";
+              %>
               <div class="row g-3 mb-3">
                 <div class="col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#ede9fe;color:#7c3aed;"><i class="bi bi-trophy-fill"></i>
-                    </div>
-                    <h3>78.4%</h3>
-                    <p>Overall Percentage</p><span class="tag tag-purple">B+ Grade</span>
+                    <div class="stat-ico" style="background:#ede9fe;color:#7c3aed;"><i class="bi bi-trophy-fill"></i></div>
+                    <h3><%= String.format("%.1f", overallResPerc) %>%</h3>
+                    <p>Overall Percentage</p><span class="tag tag-purple"><%= overallGrade %> Grade</span>
                   </div>
                 </div>
                 <div class="col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#d1fae5;color:#059669;"><i class="bi bi-graph-up-arrow"></i>
-                    </div>
-                    <h3>#8</h3>
-                    <p>Class Rank</p><span class="tag tag-green">Top 20%</span>
+                    <div class="stat-ico" style="background:#d1fae5;color:#059669;"><i class="bi bi-graph-up-arrow"></i></div>
+                    <h3>${classRank}</h3>
+                    <p>Class Rank</p><span class="tag tag-green"><%= classRank == 1 ? "Top Performer! 🏆" : "Keep improving!" %></span>
                   </div>
                 </div>
                 <div class="col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#dbeafe;color:#2563eb;"><i class="bi bi-star-fill"></i>
-                    </div>
-                    <h3>88%</h3>
-                    <p>Best Subject</p><span class="tag tag-blue">Mathematics</span>
+                    <div class="stat-ico" style="background:#dbeafe;color:#2563eb;"><i class="bi bi-star-fill"></i></div>
+                    <h3><%= bestSubPerc >= 0 ? String.format("%.0f", bestSubPerc) + "%" : "N/A" %></h3>
+                    <p>Best Subject</p><span class="tag tag-blue"><%= bestSub %></span>
                   </div>
                 </div>
               </div>
-              <div class="card-box">
+
+              <% if(groupedResults.isEmpty()) { %>
+                <div class="card-box text-center py-5">
+                   <i class="bi bi-journal-x" style="font-size:40px; color:var(--muted); opacity:0.3;"></i>
+                   <p class="mt-3 text-muted">Abhi tak koi result publish nahi hua hai.</p>
+                </div>
+              <% } else { 
+                  for(String examType : groupedResults.keySet()) {
+                    List<Map<String, Object>> results = groupedResults.get(examType);
+                    double typeObt = 0, typeMax = 0;
+              %>
+              <div class="card-box mb-4">
                 <div class="card-head">
-                  <h6>Half-Yearly Exam Results 2025</h6>
+                  <h6><%= examType %> Results</h6>
                 </div>
                 <div class="card-body-p">
                   <table class="table tbl mb-0">
@@ -1618,51 +1761,39 @@
                       </tr>
                     </thead>
                     <tbody>
+                      <% for(Map<String, Object> r : results) { 
+                          double obt = (double)r.get("obt");
+                          double max = (double)r.get("max");
+                          double p = max > 0 ? (obt*100.0/max) : 0;
+                          typeObt += obt; typeMax += max;
+                          
+                          String g = "F", c = "var(--red)", tg = "tag-red";
+                          if(p >= 90) { g="A+"; c="var(--green)"; tg="tag-green"; }
+                          else if(p >= 80) { g="A"; c="var(--green)"; tg="tag-green"; }
+                          else if(p >= 70) { g="B+"; c="var(--purple)"; tg="tag-purple"; }
+                          else if(p >= 60) { g="B"; c="var(--blue)"; tg="tag-blue"; }
+                          else if(p >= 50) { g="C"; c="var(--yellow)"; tg="tag-yellow"; }
+                      %>
                       <tr>
-                        <td style="font-weight:600;">Mathematics</td>
-                        <td>100</td>
-                        <td style="font-family:'JetBrains Mono',monospace;">88</td>
-                        <td style="font-weight:700;color:var(--green);">88%</td>
-                        <td><span class="tag tag-green">A</span></td>
+                        <td style="font-weight:600;"><%= r.get("subject") %></td>
+                        <td><%= (int)max %></td>
+                        <td style="font-family:'JetBrains Mono',monospace;"><%= (int)obt %></td>
+                        <td style="font-weight:700;color:<%= c %>;"><%= String.format("%.0f", p) %>%</td>
+                        <td><span class="tag <%= tg %>"><%= g %></span></td>
                       </tr>
-                      <tr>
-                        <td style="font-weight:600;">Science</td>
-                        <td>100</td>
-                        <td style="font-family:'JetBrains Mono',monospace;">82</td>
-                        <td style="font-weight:700;color:var(--accent);">82%</td>
-                        <td><span class="tag tag-purple">B+</span></td>
-                      </tr>
-                      <tr>
-                        <td style="font-weight:600;">English</td>
-                        <td>100</td>
-                        <td style="font-family:'JetBrains Mono',monospace;">76</td>
-                        <td style="font-weight:700;color:var(--blue);">76%</td>
-                        <td><span class="tag tag-blue">B</span></td>
-                      </tr>
-                      <tr>
-                        <td style="font-weight:600;">Social Science</td>
-                        <td>100</td>
-                        <td style="font-family:'JetBrains Mono',monospace;">71</td>
-                        <td style="font-weight:700;color:var(--yellow);">71%</td>
-                        <td><span class="tag tag-yellow">B</span></td>
-                      </tr>
-                      <tr>
-                        <td style="font-weight:600;">Hindi</td>
-                        <td>100</td>
-                        <td style="font-family:'JetBrains Mono',monospace;">69</td>
-                        <td style="font-weight:700;color:var(--red);">69%</td>
-                        <td><span class="tag tag-yellow">C+</span></td>
-                      </tr>
+                      <% } %>
                       <tr style="background:#f8fafc;">
                         <td colspan="2" style="font-weight:800;">Total / Average</td>
-                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;">386/500</td>
-                        <td style="font-weight:800;color:var(--accent);">78.4%</td>
-                        <td><span class="tag tag-purple">B+</span></td>
+                        <td style="font-family:'JetBrains Mono',monospace;font-weight:700;"><%= (int)typeObt %>/<%= (int)typeMax %></td>
+                        <% double typeP = typeMax > 0 ? (typeObt*100.0/typeMax) : 0; %>
+                        <td style="font-weight:800;color:var(--accent);"><%= String.format("%.1f", typeP) %>%</td>
+                        <td><span class="tag tag-purple">Overall</span></td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
+              <% } } %>
             </div>
 
             <!-- ASSIGNMENTS -->
@@ -1673,56 +1804,111 @@
                   <p>Pending aur completed assignments</p>
                 </div>
               </div>
+              
+              <%
+                try {
+                    Connection connAS = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                    
+                    // Fetch Pending Assignments
+                    String pendingSql = "SELECT a.* FROM assignments a " +
+                                      "WHERE (a.class = ? AND a.section = ?) " +
+                                      "AND a.assignment_id NOT IN (SELECT assignment_id FROM assignment_submissions WHERE student_id = ?) " +
+                                      "ORDER BY a.due_date ASC";
+                    PreparedStatement psP = connAS.prepareStatement(pendingSql);
+                    psP.setString(1, sClassName);
+                    psP.setString(2, sSection);
+                    psP.setInt(3, sId);
+                    ResultSet rsP = psP.executeQuery();
+                    
+                    List<Map<String, Object>> pendingList = new ArrayList<>();
+                    while(rsP.next()) {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("id", rsP.getInt("assignment_id"));
+                        map.put("title", rsP.getString("title"));
+                        map.put("desc", rsP.getString("description"));
+                        map.put("subject", rsP.getString("subject"));
+                        map.put("due", rsP.getString("due_date"));
+                        map.put("docs", rsP.getString("documents"));
+                        pendingList.add(map);
+                    }
+              %>
+              
               <div class="card-box mb-3">
                 <div class="card-head"><i class="bi bi-hourglass-split" style="color:var(--red);"></i>
-                  <h6>Pending (3)</h6>
+                  <h6>Pending (<%= pendingList.size() %>)</h6>
                 </div>
                 <div class="card-body-p">
+                  <% if(pendingList.isEmpty()) { %>
+                    <div class="text-center py-4 text-muted">Aish karo! Koi pending assignment nahi hai. 🥳</div>
+                  <% } else { 
+                      for(Map<String, Object> asgn : pendingList) {
+                          String sub = (String)asgn.get("subject");
+                          String icon = "bi-journal-text";
+                          String color = "#6366f1";
+                          if(sub.toLowerCase().contains("math")) { icon = "bi-calculator-fill"; color="#f59e0b"; }
+                          else if(sub.toLowerCase().contains("scien")) { icon = "bi-flask-fill"; color="#10b981"; }
+                          else if(sub.toLowerCase().contains("eng")) { icon = "bi-translate"; color="#3b82f6"; }
+                  %>
                   <div class="assignment-row">
-                    <div class="asgn-icon" style="background:#fef3c7;color:#d97706;"><i
-                        class="bi bi-calculator-fill"></i>
-                    </div>
+                    <div class="asgn-icon" style="background:<%= color %>15;color:<%= color %>;"><i class="bi <%= icon %>"></i></div>
                     <div class="asgn-info">
-                      <p>Algebra Chapter 7 Exercise</p><small>Mathematics • Due: 3 March 2026</small>
-                    </div><span class="tag tag-red">Urgent</span>
-                  </div>
-                  <div class="assignment-row">
-                    <div class="asgn-icon" style="background:#d1fae5;color:#059669;"><i class="bi bi-flask-fill"></i>
+                      <p><%= asgn.get("title") %></p>
+                      <small><%= sub %> • Due: <%= asgn.get("due") %></small>
                     </div>
-                    <div class="asgn-info">
-                      <p>Lab Report – Acid-Base Reaction</p><small>Science • Due: 5 March 2026</small>
-                    </div><span class="tag tag-yellow">Soon</span>
+                    <button class="tag tag-blue" style="border:none; cursor:pointer;" onclick="openSubmitModal('<%= asgn.get("id") %>', '<%= asgn.get("title") %>')">Submit Karo</button>
                   </div>
-                  <div class="assignment-row">
-                    <div class="asgn-icon" style="background:#dbeafe;color:#2563eb;"><i class="bi bi-translate"></i>
-                    </div>
-                    <div class="asgn-info">
-                      <p>Essay: My Favourite Season</p><small>English • Due: 7 March 2026</small>
-                    </div><span class="tag tag-green">Open</span>
-                  </div>
+                  <% } } %>
                 </div>
               </div>
+
+              <%
+                    // Fetch Completed Assignments
+                    String completedSql = "SELECT a.*, s.submitted_at, s.status, s.marks FROM assignments a " +
+                                        "JOIN assignment_submissions s ON a.assignment_id = s.assignment_id " +
+                                        "WHERE s.student_id = ? " +
+                                        "ORDER BY s.submitted_at DESC";
+                    PreparedStatement psC = connAS.prepareStatement(completedSql);
+                    psC.setInt(1, sId);
+                    ResultSet rsC = psC.executeQuery();
+                    
+                    List<Map<String, Object>> completedList = new ArrayList<>();
+                    while(rsC.next()) {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("title", rsC.getString("title"));
+                        map.put("subject", rsC.getString("subject"));
+                        map.put("sub_at", rsC.getTimestamp("submitted_at"));
+                        map.put("status", rsC.getString("status"));
+                        map.put("marks", rsC.getDouble("marks"));
+                        completedList.add(map);
+                    }
+              %>
+
               <div class="card-box">
                 <div class="card-head"><i class="bi bi-check-circle-fill" style="color:var(--green);"></i>
-                  <h6>Completed (5)</h6>
+                  <h6>Completed (<%= completedList.size() %>)</h6>
                 </div>
                 <div class="card-body-p">
+                  <% if(completedList.isEmpty()) { %>
+                    <div class="text-center py-4 text-muted">Abhi tak koi assignment submit nahi kiya hai.</div>
+                  <% } else { 
+                      for(Map<String, Object> asgn : completedList) {
+                  %>
                   <div class="assignment-row">
-                    <div class="asgn-icon" style="background:#d1fae5;color:#059669;"><i class="bi bi-check2-circle"></i>
-                    </div>
+                    <div class="asgn-icon" style="background:#d1fae5;color:#059669;"><i class="bi bi-check2-circle"></i></div>
                     <div class="asgn-info">
-                      <p>Chapter 5 – Geometry Problems</p><small>Mathematics • Submitted 24 Feb</small>
-                    </div><span class="tag tag-green">Done ✓</span>
-                  </div>
-                  <div class="assignment-row">
-                    <div class="asgn-icon" style="background:#d1fae5;color:#059669;"><i class="bi bi-check2-circle"></i>
+                      <p><%= asgn.get("title") %></p>
+                      <small><%= asgn.get("subject") %> • Submitted <%= new java.text.SimpleDateFormat("dd MMM").format(asgn.get("sub_at")) %></small>
                     </div>
-                    <div class="asgn-info">
-                      <p>History Essay – Mughal Empire</p><small>Social Science • Submitted 22 Feb</small>
-                    </div><span class="tag tag-green">Done ✓</span>
+                    <span class="tag tag-green">Done ✓ <%= "graded".equals(asgn.get("status")) ? "(Marks: " + asgn.get("marks") + ")" : "" %></span>
                   </div>
+                  <% } } %>
                 </div>
               </div>
+              
+              <%
+                    connAS.close();
+                } catch(Exception e) { e.printStackTrace(); }
+              %>
             </div>
 
             <!-- TIMETABLE -->
@@ -1751,46 +1937,49 @@
                         </tr>
                       </thead>
                       <tbody style="font-size:13px;">
-                        <tr>
-                          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">8:00–9:00</td>
-                          <td style="font-weight:600;color:#7c3aed;">Math</td>
-                          <td style="font-weight:600;color:#2563eb;">English</td>
-                          <td style="font-weight:600;color:#059669;">Science</td>
-                          <td style="font-weight:600;color:#d97706;">SST</td>
-                          <td style="font-weight:600;color:#7c3aed;">Math</td>
-                        </tr>
-                        <tr>
-                          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">9:05–10:05</td>
-                          <td style="font-weight:600;color:#059669;">Science</td>
-                          <td style="font-weight:600;color:#7c3aed;">Math</td>
-                          <td style="font-weight:600;color:#ec4899;">Hindi</td>
-                          <td style="font-weight:600;color:#059669;">Science</td>
-                          <td style="font-weight:600;color:#2563eb;">English</td>
-                        </tr>
-                        <tr>
-                          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">10:15–11:15</td>
-                          <td style="font-weight:600;color:#2563eb;">English</td>
-                          <td style="font-weight:600;color:#ec4899;">Hindi</td>
-                          <td style="font-weight:600;color:#7c3aed;">Math</td>
-                          <td style="font-weight:600;color:#ec4899;">Hindi</td>
-                          <td style="font-weight:600;color:#d97706;">SST</td>
-                        </tr>
-                        <tr>
-                          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">11:30–12:30</td>
-                          <td style="font-weight:600;color:#d97706;">SST</td>
-                          <td style="font-weight:600;color:#059669;">Science</td>
-                          <td style="font-weight:600;color:#2563eb;">English</td>
-                          <td style="font-weight:600;color:#7c3aed;">Math</td>
-                          <td style="font-weight:600;color:var(--muted);">Free</td>
-                        </tr>
-                        <tr>
-                          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">1:30–2:30</td>
-                          <td style="font-weight:600;color:#ec4899;">Hindi</td>
-                          <td style="font-weight:600;color:#d97706;">SST</td>
-                          <td style="font-weight:600;color:var(--muted);">Free</td>
-                          <td style="font-weight:600;color:#2563eb;">English</td>
-                          <td style="font-weight:600;color:#059669;">Science</td>
-                        </tr>
+                        <%
+                          try {
+                            Connection connSW = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                            String[] daysS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+                            String ttWeeklySqlS = "SELECT day, start_time, end_time, subject FROM timetable WHERE class = ? AND section = ? ORDER BY start_time";
+                            PreparedStatement psTTWS = connSW.prepareStatement(ttWeeklySqlS);
+                            psTTWS.setString(1, sClassName);
+                            psTTWS.setString(2, sSection);
+                            ResultSet rsTTWS = psTTWS.executeQuery();
+                            
+                            Map<String, Map<String, String>> scheduleMapS = new LinkedHashMap<>();
+                            while(rsTTWS.next()) {
+                                String timeKeyS = rsTTWS.getString("start_time").substring(0,5) + "–" + rsTTWS.getString("end_time").substring(0,5);
+                                String dayNameS = rsTTWS.getString("day");
+                                String subValueS = rsTTWS.getString("subject");
+                                
+                                if(!scheduleMapS.containsKey(timeKeyS)) scheduleMapS.put(timeKeyS, new HashMap<>());
+                                scheduleMapS.get(timeKeyS).put(dayNameS, subValueS);
+                            }
+                            
+                            if(scheduleMapS.isEmpty()) {
+                        %>
+                          <tr><td colspan="7" class="text-center py-4 text-muted">Aapki class ka weekly timetable abhi tak set nahi kiya gaya hai.</td></tr>
+                        <%
+                            } else {
+                                for(String timeS : scheduleMapS.keySet()) {
+                        %>
+                          <tr>
+                            <td style="font-family:'JetBrains Mono',monospace;font-size:12px;"><%= timeS %></td>
+                            <% for(String dS : daysS) { 
+                                String subValS = scheduleMapS.get(timeS).get(dS);
+                            %>
+                              <td style="font-weight:600;color:<%= subValS != null ? "#6366f1" : "var(--muted)" %>">
+                                <%= subValS != null ? subValS : "—" %>
+                              </td>
+                            <% } %>
+                          </tr>
+                        <%
+                                }
+                            }
+                            connSW.close();
+                          } catch(Exception e) {}
+                        %>
                       </tbody>
                     </table>
                   </div>
@@ -1806,29 +1995,77 @@
                   <p>Apni fee payment history dekho</p>
                 </div>
               </div>
+              <%
+                double annualTotal = 0;
+                double paidTotal = 0;
+                double monthlyPending = 0;
+                List<Map<String, Object>> feeHistory = new ArrayList<>();
+                Connection connFee = null;
+                try {
+                    connFee = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                    
+                    // 1. Fetch Fee History
+                    String feeSql = "SELECT * FROM fees WHERE student_id = ? ORDER BY payment_date DESC";
+                    PreparedStatement psFee = connFee.prepareStatement(feeSql);
+                    psFee.setInt(1, sId);
+                    ResultSet rsFee = psFee.executeQuery();
+                    while(rsFee.next()) {
+                        Map<String, Object> f = new HashMap<>();
+                        f.put("id", rsFee.getString("transaction_id"));
+                        f.put("date", rsFee.getDate("payment_date"));
+                        f.put("month", rsFee.getString("month"));
+                        f.put("year", rsFee.getInt("year"));
+                        f.put("desc", rsFee.getString("month") + " " + rsFee.getInt("year") + " Fee");
+                        double amt = rsFee.getDouble("amount");
+                        f.put("amt", amt);
+                        String st = rsFee.getString("status");
+                        f.put("status", st);
+                        if("paid".equals(st)) paidTotal += amt;
+                        feeHistory.add(f);
+                    }
+
+                    // 2. Fetch dynamic monthly fee
+                    double monthlyFee = 2500; // Fallback
+                    ResultSet rsFs = connFee.createStatement().executeQuery("SELECT monthly_fee FROM fee_structure WHERE class_name = '" + sClassName + "'");
+                    if(rsFs.next()) monthlyFee = rsFs.getDouble(1);
+                    
+                    // 3. Check if current month is paid
+                    String currentMonth = new java.text.SimpleDateFormat("MMMM").format(new java.util.Date());
+                    int currentYear = java.time.Year.now().getValue();
+                    boolean isPaidThisMonth = false;
+                    for(Map<String, Object> f : feeHistory) {
+                        String m = (String)f.get("month");
+                        int y = (int)f.get("year");
+                        if(currentMonth.equalsIgnoreCase(m) && currentYear == y && "paid".equals(f.get("status"))) {
+                            isPaidThisMonth = true;
+                            break;
+                        }
+                    }
+                    monthlyPending = isPaidThisMonth ? 0 : monthlyFee;
+                } catch(Exception e) { e.printStackTrace(); }
+                finally { if(connFee != null) connFee.close(); }
+                double pendingTotal = monthlyPending;
+              %>
               <div class="row g-3 mb-3">
                 <div class="col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#d1fae5;color:#059669;"><i
-                        class="bi bi-check-circle-fill"></i>
-                    </div>
-                    <h3>32,000</h3>
-                    <p>Annual Fee (₹)</p><span class="tag tag-green">Paid</span>
+                    <div class="stat-ico" style="background:#d1fae5;color:#059669;"><i class="bi bi-check-circle-fill"></i></div>
+                    <h3>₹<%= String.format("%,.0f", paidTotal) %></h3>
+                    <p>Total Paid (₹)</p><span class="tag tag-green">Current Session</span>
                   </div>
                 </div>
                 <div class="col-md-4">
                   <div class="stat">
-                    <div class="stat-ico" style="background:#fef3c7;color:#d97706;"><i class="bi bi-clock-fill"></i>
-                    </div>
-                    <h3>₹0</h3>
-                    <p>Pending Amount</p><span class="tag tag-green">No Dues!</span>
+                    <div class="stat-ico" style="background:#fef3c7;color:#d97706;"><i class="bi bi-clock-fill"></i></div>
+                    <h3>₹<%= String.format("%,.0f", pendingTotal) %></h3>
+                    <p>Monthly Pending</p><span class="tag <%= pendingTotal <= 0 ? "tag-green" : "tag-red" %>"><%= pendingTotal <= 0 ? "Paid!" : "Due This Month" %></span>
                   </div>
                 </div>
                 <div class="col-md-4">
                   <div class="stat">
                     <div class="stat-ico" style="background:#dbeafe;color:#2563eb;"><i class="bi bi-receipt"></i></div>
-                    <h3>4</h3>
-                    <p>Transactions</p><span class="tag tag-blue">This year</span>
+                    <h3><%= feeHistory.size() %></h3>
+                    <p>Transactions</p><span class="tag tag-blue">Total Records</span>
                   </div>
                 </div>
               </div>
@@ -1848,34 +2085,19 @@
                       </tr>
                     </thead>
                     <tbody>
+                      <% for(Map<String, Object> f : feeHistory) { 
+                          String tag = "paid".equals(f.get("status")) ? "tag-green" : "tag-yellow";
+                      %>
                       <tr>
-                        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">TXN-20250401</td>
-                        <td>1 Apr 2025</td>
-                        <td>Q1 Tuition Fee</td>
-                        <td style="font-weight:700;">₹8,000</td>
-                        <td><span class="tag tag-green">Paid</span></td>
+                        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;"><%= f.get("id") %></td>
+                        <td><%= new java.text.SimpleDateFormat("dd MMM yyyy").format(f.get("date")) %></td>
+                        <td><%= f.get("desc") %></td>
+                        <td style="font-weight:700;">₹<%= String.format("%,.0f", f.get("amt")) %></td>
+                        <td><span class="tag <%= tag %>"><%= ((String)f.get("status")).toUpperCase() %></span></td>
                       </tr>
-                      <tr>
-                        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">TXN-20250701</td>
-                        <td>1 Jul 2025</td>
-                        <td>Q2 Tuition Fee</td>
-                        <td style="font-weight:700;">₹8,000</td>
-                        <td><span class="tag tag-green">Paid</span></td>
-                      </tr>
-                      <tr>
-                        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">TXN-20251001</td>
-                        <td>1 Oct 2025</td>
-                        <td>Q3 Tuition Fee</td>
-                        <td style="font-weight:700;">₹8,000</td>
-                        <td><span class="tag tag-green">Paid</span></td>
-                      </tr>
-                      <tr>
-                        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">TXN-20260101</td>
-                        <td>1 Jan 2026</td>
-                        <td>Q4 Tuition Fee</td>
-                        <td style="font-weight:700;">₹8,000</td>
-                        <td><span class="tag tag-green">Paid</span></td>
-                      </tr>
+                      <% } if(feeHistory.isEmpty()) { %>
+                        <tr><td colspan="5" class="text-center py-4 text-muted">Abhi tak koi fee transaction nahi mila.</td></tr>
+                      <% } %>
                     </tbody>
                   </table>
                 </div>
@@ -1887,39 +2109,52 @@
               <div class="pg-header">
                 <div class="pg-header-left">
                   <h4>School Notices</h4>
-                  <p>Sabhi important announcements</p>
+                  <p>Sabhi important announcements dekho</p>
                 </div>
               </div>
-              <div class="card-box">
-                <div class="card-head"><i class="bi bi-megaphone-fill" style="color:var(--yellow);"></i>
-                  <h6>Latest Notices</h6>
+              <div class="row g-3">
+                <% 
+                Connection connNS = null;
+                try {
+                    connNS = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                    String nsSql = "SELECT * FROM notices WHERE (target IN ('all', 'students') AND student_id IS NULL) OR student_id = " + sId + " ORDER BY published_at DESC";
+                    ResultSet rsNS = connNS.createStatement().executeQuery(nsSql);
+                    boolean hasNoticesS = false;
+                    while(rsNS.next()) {
+                        hasNoticesS = true;
+                        String title = rsNS.getString("title");
+                        String msg = rsNS.getString("message");
+                        String priority = rsNS.getString("priority");
+                        Timestamp time = rsNS.getTimestamp("published_at");
+                        
+                        String borderCol = "urgent".equals(priority) ? "var(--red)" : ("important".equals(priority) ? "var(--yellow)" : "var(--accent)");
+                        String bgCol = "urgent".equals(priority) ? "#fff5f5" : ("important".equals(priority) ? "#fffbeb" : "#f0fdf4");
+                        String tagClass = "urgent".equals(priority) ? "tag-red" : ("important".equals(priority) ? "tag-yellow" : "tag-green");
+                %>
+                <div class="col-12">
+                    <div style="border-left:4px solid <%= borderCol %>; background:<%= bgCol %>; border-radius:12px; padding:20px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 style="font-weight:800; margin:0; color:var(--dark); font-size:16px;"><%= title %></h6>
+                            <span style="font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace;">
+                                <%= new java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a").format(time) %>
+                            </span>
+                        </div>
+                        <p style="font-size:14px; color:#4b5563; margin-bottom:12px; line-height:1.6;"><%= msg %></p>
+                        <span class="tag <%= tagClass %>"><%= priority.toUpperCase() %></span>
+                    </div>
                 </div>
-                <div class="card-body-p">
-                  <div class="notice-item" style="border-left:4px solid #6366f1;">
-                    <div class="d-flex justify-content-between align-items-start mb-1">
-                      <h6>Annual Sports Day – 10 March 2026</h6>
-                      <span class="notice-date">28 Feb 2026</span>
-                    </div>
-                    <p>Saare students ko sports ground pe 8 AM tak report karna hai.</p>
-                    <span class="tag tag-purple mt-2 d-inline-block">All Students</span>
-                  </div>
-                  <div class="notice-item" style="border-left:4px solid #f59e0b;">
-                    <div class="d-flex justify-content-between align-items-start mb-1">
-                      <h6>Half-Yearly Exam Schedule</h6>
-                      <span class="notice-date">25 Feb 2026</span>
-                    </div>
-                    <p>Half-yearly exams 15 March se start honge. Timetable school website pe available hai.</p>
-                    <span class="tag tag-yellow mt-2 d-inline-block">Class 10</span>
-                  </div>
-                  <div class="notice-item" style="border-left:4px solid #10b981;">
-                    <div class="d-flex justify-content-between align-items-start mb-1">
-                      <h6>Science Exhibition – Registrations Open</h6>
-                      <span class="notice-date">20 Feb 2026</span>
-                    </div>
-                    <p>Inter-school Science Exhibition ke liye registrations shuru ho gaye hain.</p>
-                    <span class="tag tag-green mt-2 d-inline-block">Voluntary</span>
-                  </div>
+                <% 
+                    } 
+                    if(!hasNoticesS) {
+                %>
+                <div class="col-12 text-center py-5">
+                    <i class="bi bi-bell-slash" style="font-size:40px; color:var(--muted); opacity:0.3;"></i>
+                    <p class="mt-3 text-muted">Abhi koi naya notice nahi hai.</p>
                 </div>
+                <%
+                    }
+                } catch(Exception e) { e.printStackTrace(); } finally { if(connNS != null) try { connNS.close(); } catch(Exception e) {} }
+                %>
               </div>
             </div>
           </div>
@@ -1996,6 +2231,42 @@
             </div>
           </div>
 
+          <!-- ASSIGNMENT SUBMIT MODAL -->
+          <div class="modal-backdrop-custom" id="submitModal" onclick="closeSubmitModalOutside(event)">
+            <div class="edit-modal">
+              <div class="edit-modal-head">
+                <h5><i class="bi bi-send-fill me-2" style="color:var(--accent);"></i>Submit Assignment</h5>
+                <button class="modal-close" onclick="closeSubmitModal()">✕</button>
+              </div>
+              <div class="edit-modal-body">
+                <form action="/submitAssignment" method="post" enctype="multipart/form-data">
+                  <input type="hidden" name="assignment_id" id="submit-asgn-id">
+                  <input type="hidden" name="student_id" value="<%= sId %>">
+                  
+                  <div class="mb-3">
+                    <label class="form-label">Assignment Title</label>
+                    <input type="text" id="submit-asgn-title" class="form-control" readonly style="background:#f8fafc;">
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label class="form-label">Your Answer / Notes</label>
+                    <textarea name="submission_text" class="form-control" rows="4" placeholder="Apna answer yahan likhein..." required></textarea>
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label class="form-label">Upload File (Optional)</label>
+                    <input type="file" name="file" class="form-control">
+                  </div>
+                  
+                  <div class="d-flex gap-2 pt-2">
+                    <button type="submit" class="save-btn"><i class="bi bi-check-lg me-1"></i> Submit Karo</button>
+                    <button type="button" onclick="closeSubmitModal()" style="background:var(--bg);border:1.5px solid var(--border);border-radius:11px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
           <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
           <script>
             const pageTitles = {
@@ -2029,6 +2300,22 @@
 
             function closeEditModalOutside(e) {
               if (e.target === document.getElementById('editModal')) closeEditModal();
+            }
+
+            function openSubmitModal(id, title) {
+                document.getElementById('submit-asgn-id').value = id;
+                document.getElementById('submit-asgn-title').value = title;
+                document.getElementById('submitModal').classList.add('show');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeSubmitModal() {
+                document.getElementById('submitModal').classList.remove('show');
+                document.body.style.overflow = '';
+            }
+
+            function closeSubmitModalOutside(e) {
+                if (e.target === document.getElementById('submitModal')) closeSubmitModal();
             }
 
             function previewImage(input) {
