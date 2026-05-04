@@ -72,6 +72,7 @@
                 int casualUsed=0, medicalUsed=0, earnedUsed=0;
                 int pendingLeaveCount=0;
                 int totalLeaveAllotted=0, totalLeaveUsed=0, totalLeaveAvailable=0;
+                int totalNoticesCount = 0;
                 List<Map<String, String>> leaveHistory = new ArrayList<>();
                 
                 Connection connD = null;
@@ -257,7 +258,6 @@
                         }
 
                         // 9. Fetch Notices Count
-                        int totalNoticesCount = 0;
                         String countNoticesSql = "SELECT COUNT(*) FROM notices WHERE target IN ('all', 'teachers') AND student_id IS NULL";
                         PreparedStatement psNC = connD.prepareStatement(countNoticesSql);
                         ResultSet rsNC = psNC.executeQuery();
@@ -1598,8 +1598,7 @@
                             <div class="s-item"><a class="s-link" data-page="attendance"><i
                                         class="bi bi-calendar-check-fill"></i> Mark Attendance</a></div>
                             <div class="s-item"><a class="s-link" data-page="assignments"><i
-                                        class="bi bi-clipboard2-check-fill"></i> Assignments <span
-                                        class="sbadge red"><%= pendingAssignmentsCount %></span></a></div>
+                                        class="bi bi-clipboard2-check-fill"></i> Assignments <% if(pendingAssignmentsCount > 0) { %><span class="sbadge red"><%= pendingAssignmentsCount %></span><% } %></a></div>
                             <div class="s-item"><a class="s-link" data-page="results"><i
                                         class="bi bi-bar-chart-fill"></i> Results & Marks</a></div>
 
@@ -1610,7 +1609,7 @@
                             </div>
                             <div class="s-item"><a class="s-link" data-page="notices"><i
                                         class="bi bi-bell-fill"></i>
-                                    Notices <span class="sbadge" id="sidebar-notif-count">${noticesCount}</span></a></div>
+                                    Notices <% if(totalNoticesCount > 0) { %><span class="sbadge" id="sidebar-notif-count"><%= totalNoticesCount %></span><% } %></a></div>
                         </nav>
 
                         <div class="s-bottom">
@@ -1706,8 +1705,10 @@
                                                     boolean hasTodayTT = false;
                                                     while(rsTTD.next()) {
                                                         hasTodayTT = true;
-                                                        String sTime = rsTTD.getString("start_time").substring(0,5);
-                                                        String eTime = rsTTD.getString("end_time").substring(0,5);
+                                                        String stRaw = rsTTD.getString("start_time");
+                                                        String etRaw = rsTTD.getString("end_time");
+                                                        String sTime = (stRaw != null && stRaw.length() >= 5) ? stRaw.substring(0,5) : "00:00";
+                                                        String eTime = (etRaw != null && etRaw.length() >= 5) ? etRaw.substring(0,5) : "00:00";
                                                         String subT = rsTTD.getString("subject");
                                                         String clsT = rsTTD.getString("class") + "-" + rsTTD.getString("section");
                                                         String roomT = rsTTD.getString("room");
@@ -1894,7 +1895,7 @@
                                     <%= tName %>
                                 </h3>
                                 <div class="prole" id="profile-role">
-                                    <%= tSubject %> • Class 9 & 10
+                                    <%= tSubject %> • <%= myClassesCount %> Active Classes
                                 </div>
                                 <div class="ptags">
                                     <span class="ptag" id="profile-dept-tag"><i class="bi bi-diagram-3-fill"></i>
@@ -2035,7 +2036,7 @@
                                                                                 style="border:1.5px solid var(--border);border-radius:12px;padding:12px;text-align:center">
                                                                                 <div
                                                                                     style="font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#16a34a">
-                                                                                    8</div>
+                                                                                    <%= (casualTotal - casualUsed) %></div>
                                                                                 <div
                                                                                     style="font-size:11px;color:var(--muted);font-weight:600">
                                                                                     Casual Leave
@@ -2047,7 +2048,7 @@
                                                                                 style="border:1.5px solid var(--border);border-radius:12px;padding:12px;text-align:center">
                                                                                 <div
                                                                                     style="font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#2563eb">
-                                                                                    4</div>
+                                                                                    <%= (medicalTotal - medicalUsed) %></div>
                                                                                 <div
                                                                                     style="font-size:11px;color:var(--muted);font-weight:600">
                                                                                     Medical Leave
@@ -2059,7 +2060,7 @@
                                                                                 style="border:1.5px solid var(--border);border-radius:12px;padding:12px;text-align:center">
                                                                                 <div
                                                                                     style="font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#d97706">
-                                                                                    0</div>
+                                                                                    <%= (earnedTotal - earnedUsed) %></div>
                                                                                 <div
                                                                                     style="font-size:11px;color:var(--muted);font-weight:600">
                                                                                     Earned Leave
@@ -2071,7 +2072,7 @@
                                                                                 style="border:1.5px solid var(--border);border-radius:12px;padding:12px;text-align:center">
                                                                                 <div
                                                                                     style="font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#7c3aed">
-                                                                                    5</div>
+                                                                                    <%= totalLeaveUsed %></div>
                                                                                 <div
                                                                                     style="font-size:11px;color:var(--muted);font-weight:600">
                                                                                     Used
@@ -2082,7 +2083,6 @@
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                    </div>
                                     </div>
                         </div> <!-- FIX: page-profile closes here -->
 
@@ -2229,7 +2229,9 @@
                                                         Map<String, Map<String, String[]>> scheduleMap = new LinkedHashMap<>();
                                                         java.util.Set<String> uniqueClasses = new java.util.LinkedHashSet<>();
                                                         while(rsTTW.next()) {
-                                                            String timeKey = rsTTW.getString("start_time").substring(0,5) + "–" + rsTTW.getString("end_time").substring(0,5);
+                                                            String stW = rsTTW.getString("start_time");
+                                                            String etW = rsTTW.getString("end_time");
+                                                            String timeKey = ((stW != null && stW.length() >= 5) ? stW.substring(0,5) : "00:00") + "–" + ((etW != null && etW.length() >= 5) ? etW.substring(0,5) : "00:00");
                                                             String dayName = rsTTW.getString("day");
                                                             String classVal = rsTTW.getString("class") + "-" + rsTTW.getString("section");
                                                             String subjectVal = rsTTW.getString("subject");
@@ -3190,7 +3192,7 @@
                             const badge = document.getElementById('sidebar-notif-count');
                             if (!badge) return;
 
-                            const totalCount = parseInt(badge.getAttribute('data-total') || '${noticesCount}');
+                            const totalCount = parseInt(badge.getAttribute('data-total') || '<%= totalNoticesCount %>');
                             if (isNaN(totalCount)) return;
 
                             let seenIds = JSON.parse(localStorage.getItem('seen_notices') || '[]');
@@ -3216,7 +3218,7 @@
                         window.addEventListener('DOMContentLoaded', () => {
                             const badge = document.getElementById('sidebar-notif-count');
                             if (badge) {
-                                badge.setAttribute('data-total', '${noticesCount}');
+                                badge.setAttribute('data-total', '<%= totalNoticesCount %>');
                                 updateNoticeBadge();
                             }
                         });
