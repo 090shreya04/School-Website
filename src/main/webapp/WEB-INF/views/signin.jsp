@@ -1,3 +1,20 @@
+<%
+  response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  response.setHeader("Pragma", "no-cache");
+  response.setDateHeader("Expires", 0);
+
+  String sessRole = (String) session.getAttribute("role");
+  if (session.getAttribute("user_id") != null && sessRole != null) {
+      if ("admin".equalsIgnoreCase(sessRole)) {
+          response.sendRedirect("/adashboard");
+      } else if ("faculty".equalsIgnoreCase(sessRole)) {
+          response.sendRedirect("/tdashboard");
+      } else if ("student".equalsIgnoreCase(sessRole)) {
+          response.sendRedirect("/sdashboard");
+      }
+      return;
+  }
+%>
 <jsp:include page="bootstraplink.jsp" />
 
 <!doctype html>

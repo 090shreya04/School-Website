@@ -1,6 +1,12 @@
 <%@ page import="java.sql.*, java.util.*" %>
   <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-    <% if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; } Object
+    <% 
+      response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      response.setHeader("Pragma", "no-cache");
+      response.setDateHeader("Expires", 0);
+      if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; } 
+    %>
+    <% Object
       userId=session.getAttribute("user_id"); String sName="Student" ; String sClass="Class - | No Profile" ; String
       sInitials="S" ; String sPhotoBase64=null; String sDob="" , sGender="" , sBlood="" , sPhone="" , sEmail="" ,
       sAddress="" , sRoll="" , sClassName="" , sSection="" , sStatus="" ; int sId = 0; Connection conn=null; PreparedStatement
@@ -2283,6 +2289,12 @@
               dashboard: 'Dashboard', profile: 'My Profile', attendance: 'My Attendance',
               results: 'Results & Grades', assignments: 'Assignments', timetable: 'Timetable',
               fees: 'Fee Status', notices: 'Notices'
+            };
+
+            // Browser Back/Forward Disable Logic
+            history.pushState(null, null, location.href);
+            window.onpopstate = function () {
+                history.go(1);
             };
 
             function showPage(name, el) {

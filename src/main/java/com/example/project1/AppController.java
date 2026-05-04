@@ -80,14 +80,31 @@ public class AppController {
             return "signup";
         }
 
+        if ("admin".equalsIgnoreCase(role)) {
+            Integer adminCount = jdbc.queryForObject("SELECT COUNT(*) FROM user WHERE role = 'admin'", Integer.class);
+            if (adminCount != null && adminCount > 0) {
+                m.addAttribute("error", "Administrator already exists. You cannot register as an admin.");
+                return "signup";
+            }
+        }
+
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
         String encryptedPassword = encoder.encode(password);
         String encryptedConfirmPassword = encoder.encode(confirm_password);
 
         // Use parameterized update to avoid SQL injection
-        String sql = "INSERT INTO user(name, role, password, confirmpassword) VALUES(?, ?, ?, ?)";
-        jdbc.update(sql, uname, role, encryptedPassword, encryptedConfirmPassword);
-        m.addAttribute("msg", "Registered Successfully");
+        try {
+            String sql = "INSERT INTO user(name, role, password, confirmpassword) VALUES(?, ?, ?, ?)";
+            jdbc.update(sql, uname, role, encryptedPassword, encryptedConfirmPassword);
+            m.addAttribute("msg", "Registered Successfully");
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            if (e.getMessage() != null && e.getMessage().contains("idx_single_admin")) {
+                m.addAttribute("error", "Administrator already exists.");
+            } else {
+                m.addAttribute("error", "Username already taken.");
+            }
+            return "signup";
+        }
         return "signup";
     }
 

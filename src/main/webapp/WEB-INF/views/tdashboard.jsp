@@ -1,6 +1,10 @@
 <%@ page import="java.sql.*, java.util.*" %>
     <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-        <% if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; }
+        <% 
+            response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            response.setHeader("Pragma", "no-cache");
+            response.setDateHeader("Expires", 0);
+            if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; } 
             Object userId=session.getAttribute("user_id"); String tName="Teacher" ; String tSubject="Subject Teacher" ;
             String tInitials="T" ; String tPhotoBase64=null; String tId="", tDob="" , tGender="" , tBlood="" , tPhone="" ,
             tEmail="" , tAddress="" , tDept="" , tEmpId="" , tQual="" , tExp="" , tJoined="" ; Connection conn=null;
@@ -3269,6 +3273,12 @@
 
                         window.addEventListener('load', function() {
                             const urlParams = new URLSearchParams(window.location.search);
+                            
+                            // Browser Back/Forward Disable Logic
+                            history.pushState(null, null, location.href);
+                            window.onpopstate = function () {
+                                history.go(1);
+                            };
                             
                             // Notifications
                             if (urlParams.has('success')) {

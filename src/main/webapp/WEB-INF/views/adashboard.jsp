@@ -1,7 +1,11 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
   <%@ page import="java.sql.*, java.util.*, java.io.*" %>
 
-    <% if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; } Object
+    <% 
+      response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      response.setHeader("Pragma", "no-cache");
+      response.setDateHeader("Expires", 0);
+      if (session==null || session.getAttribute("user_id")==null) { response.sendRedirect("/signin"); return; } Object
       userId=session.getAttribute("user_id"); String adName="Admin User" , adDesignation="Super Administrator" ,
       adInitials="A" , adPhotoBase64=null; String adDob="" , adGender="" , adBlood="" , adPhone="" , adEmail="" ,
       adAddress="" ; String adDept="" , adEmpId="" , adJoined="" , adSubject="" , adQual="" , adExp="" , adRole="" ,
@@ -6045,6 +6049,11 @@ String
                         // --- EVENT LISTENERS ---
 
                         window.addEventListener('load', function () {
+                          // Browser Back/Forward Disable Logic
+                          history.pushState(null, null, location.href);
+                          window.onpopstate = function () {
+                            history.go(1);
+                          };
 
                           console.log('Admin Dashboard JS Loaded');
 
