@@ -55,6 +55,7 @@
                 int totalStudentsCount = 0;
                 int pendingAssignmentsCount = 0; 
                 double classAvgPercent = 0.0;
+                String schoolName = "EduManage"; // Default
                 List<Map<String, String>> assignedClasses = new ArrayList<>();
                 
                 // Results Page Data
@@ -77,6 +78,10 @@
                 try {
                     connD = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
                     
+                    // School Name
+                    ResultSet rsSN = connD.createStatement().executeQuery("SELECT config_value FROM settings WHERE config_key='school_name'");
+                    if(rsSN.next()) schoolName = rsSN.getString(1);
+
                     if (tId != null && !tId.isEmpty()) {
                         // 1. My Classes Count & List
                         String classesSql = "SELECT DISTINCT class, section FROM timetable WHERE teacher_id = ? ORDER BY class, section";
@@ -1554,7 +1559,7 @@
                         <div class="s-brand">
                             <div class="s-brand-icon"><i class="bi bi-person-video3"></i></div>
                             <div class="s-brand-text">
-                                <h6>EduManage</h6><small>Teacher Portal</small>
+                                <h6><%= schoolName %></h6><small>Teacher Portal</small>
                             </div>
                         </div>
 

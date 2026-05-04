@@ -49,11 +49,18 @@
         int totP=0, totA=0, totL=0, totW=0;
         double overallResPerc = 0;
         int pendingAsgnCount = 0;
-        int unreadNotices = 0;
+        int unreadNoticesCount = 0;
+        int classRank = 0;
+        String schoolName = "EduManage"; // Default
+        Map<String, Double> subjectPerformance = new LinkedHashMap<>();
 
         try {
             Connection connMain = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
             
+            // School Name
+            ResultSet rsSN = connMain.createStatement().executeQuery("SELECT config_value FROM settings WHERE config_key='school_name'");
+            if(rsSN.next()) schoolName = rsSN.getString(1);
+
             // Attendance Stats
             String attSql = "SELECT status, COUNT(*) as count FROM attendance WHERE student_id = ? GROUP BY status";
             PreparedStatement psAtt = connMain.prepareStatement(attSql);
@@ -72,12 +79,29 @@
             if(rsS.next()) totW = rsS.getInt(1);
             else totW = totP + totA + totL; // Fallback
 
-            // Results Stats
+            // Results Stats & Class Rank
             String resSql = "SELECT AVG(marks_obtained*100.0/total_marks) as avg_p FROM results WHERE student_id = ?";
             PreparedStatement psRes = connMain.prepareStatement(resSql);
             psRes.setInt(1, sId);
             ResultSet rsR = psRes.executeQuery();
             if(rsR.next()) overallResPerc = rsR.getDouble("avg_p");
+
+            // Calculate Rank
+            String rankSql = "SELECT rnk FROM (SELECT student_id, RANK() OVER (ORDER BY AVG(marks_obtained*100.0/total_marks) DESC) as rnk FROM results WHERE class = ? GROUP BY student_id) t WHERE student_id = ?";
+            PreparedStatement psRank = connMain.prepareStatement(rankSql);
+            psRank.setString(1, sClassName);
+            psRank.setInt(2, sId);
+            ResultSet rsRank = psRank.executeQuery();
+            if(rsRank.next()) classRank = rsRank.getInt("rnk");
+
+            // Subject Performance
+            String subPerfSql = "SELECT subject, AVG(marks_obtained*100.0/total_marks) as avg_p FROM results WHERE student_id = ? GROUP BY subject";
+            PreparedStatement psSub = connMain.prepareStatement(subPerfSql);
+            psSub.setInt(1, sId);
+            ResultSet rsSub = psSub.executeQuery();
+            while(rsSub.next()) {
+                subjectPerformance.put(rsSub.getString("subject"), rsSub.getDouble("avg_p"));
+            }
 
             // Pending Assignments
             String asgnSql = "SELECT COUNT(*) FROM assignments WHERE (class = ? AND section = ?) " +
@@ -89,8 +113,17 @@
             ResultSet rsAsgn = psAsgn.executeQuery();
             if(rsAsgn.next()) pendingAsgnCount = rsAsgn.getInt(1);
 
+            // Unread Notices
+            String noticeCountSql = "SELECT COUNT(*) FROM notices WHERE (target IN ('all', 'students') AND student_id IS NULL OR student_id = ?) " +
+                                  "AND notice_id NOT IN (SELECT notice_id FROM notice_views WHERE student_id = ?)";
+            PreparedStatement psNot = connMain.prepareStatement(noticeCountSql);
+            psNot.setInt(1, sId);
+            psNot.setInt(2, sId);
+            ResultSet rsNot = psNot.executeQuery();
+            if(rsNot.next()) unreadNoticesCount = rsNot.getInt(1);
+
             connMain.close();
-        } catch(Exception e) {}
+        } catch(Exception e) { e.printStackTrace(); }
         %>
         <!DOCTYPE html>
         <html lang="en">
@@ -1072,7 +1105,7 @@
             <div class="s-brand">
               <div class="s-brand-icon"><i class="bi bi-mortarboard-fill"></i></div>
               <div class="s-brand-text">
-                <h6>EduManage</h6>
+                <h6><%= schoolName %></h6>
                 <small>Student Portal</small>
               </div>
             </div>
@@ -1139,7 +1172,7 @@
               <div class="s-nav-item">
                 <a class="s-nav-link" onclick="showPage('notices', this)">
                   <i class="bi bi-bell-fill"></i> Notices
-                  <span class="s-badge">2</span>
+                  <% if(unreadNoticesCount > 0) { %><span class="s-badge alert"><%= unreadNoticesCount %></span><% } %>
                 </a>
               </div>
             </nav>
@@ -1156,14 +1189,14 @@
               <button class="mobile-toggle" onclick="toggleSidebar()"><i class="bi bi-list"></i></button>
               <span class="topbar-page-title" id="page-title">Dashboard</span>
               <div class="topbar-right">
-                <span class="tb-date" id="topbar-date">Monday, 2 March 2026</span>
+                <span class="tb-date" id="topbar-date"><%= new java.text.SimpleDateFormat("EEEE, d MMMM yyyy").format(new java.util.Date()) %></span>
                 <div class="tb-search">
                   <i class="bi bi-search"></i>
                   <input type="text" placeholder="Search..." />
                 </div>
-                <div class="tb-btn">
+                <div class="tb-btn" onclick="showPage('notices', document.querySelector('.s-nav-link[onclick*=\'notices\']'))">
                   <i class="bi bi-bell"></i>
-                  <span class="tb-notif"></span>
+                  <% if(unreadNoticesCount > 0) { %><span class="tb-notif"></span><% } %>
                 </div>
                 <div><a href="/student_logout" class="tb-btn" style="text-decoration: none;">
                     <i class="bi bi-box-arrow-right"></i>
@@ -1212,7 +1245,7 @@
                   <div class="stat">
                     <div class="stat-ico" style="background:#dbeafe; color:#2563eb;"><i class="bi bi-trophy-fill"></i>
                     </div>
-                    <h3>#?</h3>
+                    <h3>#<%= classRank > 0 ? classRank : "?" %></h3>
                     <p>Class Rank</p>
                     <span class="tag tag-blue">Keep it up!</span>
                   </div>
@@ -1227,56 +1260,31 @@
                       <h6>Subject Performance</h6>
                     </div>
                     <div class="card-body-p">
+                      <% if(subjectPerformance.isEmpty()) { %>
+                        <div class="text-center py-4 text-muted">No subject performance data available</div>
+                      <% } else { 
+                          String[] colors = {"#10b981", "#6366f1", "#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6"};
+                          int cIdx = 0;
+                          for(Map.Entry<String, Double> entry : subjectPerformance.entrySet()) {
+                              String subject = entry.getKey();
+                              double score = entry.getValue();
+                              String color = colors[cIdx % colors.length];
+                      %>
                       <div class="mb-3">
                         <div class="d-flex justify-content-between mb-1">
-                          <span style="font-size:13px;font-weight:600;">Mathematics</span>
-                          <span
-                            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--green);">88%</span>
+                          <span style="font-size:13px;font-weight:600;"><%= subject %></span>
+                          <span style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:<%= color %>;">
+                            <%= String.format("%.1f", score) %>%
+                          </span>
                         </div>
                         <div class="prog-bar-wrap">
-                          <div class="prog-bar" style="width:88%;background:#10b981;"></div>
+                          <div class="prog-bar" style="width:<%= score %>%;background:<%= color %>;"></div>
                         </div>
                       </div>
-                      <div class="mb-3">
-                        <div class="d-flex justify-content-between mb-1">
-                          <span style="font-size:13px;font-weight:600;">Science</span>
-                          <span
-                            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--accent);">82%</span>
-                        </div>
-                        <div class="prog-bar-wrap">
-                          <div class="prog-bar" style="width:82%;background:#6366f1;"></div>
-                        </div>
-                      </div>
-                      <div class="mb-3">
-                        <div class="d-flex justify-content-between mb-1">
-                          <span style="font-size:13px;font-weight:600;">English</span>
-                          <span
-                            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--blue);">76%</span>
-                        </div>
-                        <div class="prog-bar-wrap">
-                          <div class="prog-bar" style="width:76%;background:#3b82f6;"></div>
-                        </div>
-                      </div>
-                      <div class="mb-3">
-                        <div class="d-flex justify-content-between mb-1">
-                          <span style="font-size:13px;font-weight:600;">Social Science</span>
-                          <span
-                            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--yellow);">71%</span>
-                        </div>
-                        <div class="prog-bar-wrap">
-                          <div class="prog-bar" style="width:71%;background:#f59e0b;"></div>
-                        </div>
-                      </div>
-                      <div>
-                        <div class="d-flex justify-content-between mb-1">
-                          <span style="font-size:13px;font-weight:600;">Hindi</span>
-                          <span
-                            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#ec4899;">69%</span>
-                        </div>
-                        <div class="prog-bar-wrap">
-                          <div class="prog-bar" style="width:69%;background:#ec4899;"></div>
-                        </div>
-                      </div>
+                      <% 
+                              cIdx++;
+                          }
+                      } %>
                     </div>
                   </div>
                 </div>
@@ -1331,8 +1339,7 @@
                     <div class="card-head">
                       <i class="bi bi-clock-fill" style="color:var(--blue);"></i>
                       <h6>Aaj ki Classes</h6>
-                      <span class="ms-auto" id="dash-date" style="font-size:12px;color:var(--muted);">Monday, 2 March
-                        2026</span>
+                      <span class="ms-auto" id="dash-date" style="font-size:12px;color:var(--muted);"><%= new java.text.SimpleDateFormat("EEEE, d MMMM yyyy").format(new java.util.Date()) %></span>
                     </div>
                     <div class="card-body-p">
                       <div class="row g-2">
@@ -1340,11 +1347,11 @@
                           try {
                             Connection connSD = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
                             String todayDayS = new java.text.SimpleDateFormat("EEEE").format(new java.util.Date());
-                            String sFullClass = sClassName + "-" + sSection;
-                            String ttTodaySqlS = "SELECT tt.*, t.name as teacher_name FROM timetable tt LEFT JOIN teachers t ON tt.teacher_id = t.teacher_id WHERE tt.class = ? AND tt.day = ? ORDER BY tt.start_time";
+                            String ttTodaySqlS = "SELECT tt.*, t.name as teacher_name FROM timetable tt LEFT JOIN teachers t ON tt.teacher_id = t.teacher_id WHERE tt.class = ? AND tt.section = ? AND tt.day = ? ORDER BY tt.start_time";
                             PreparedStatement psTTS = connSD.prepareStatement(ttTodaySqlS);
-                            psTTS.setString(1, sFullClass);
-                            psTTS.setString(2, todayDayS);
+                            psTTS.setString(1, sClassName);
+                            psTTS.setString(2, sSection);
+                            psTTS.setString(3, todayDayS);
                             ResultSet rsTTSD = psTTS.executeQuery();
                             boolean hasTodayTTS = false;
                             while(rsTTSD.next()) {
@@ -1647,7 +1654,7 @@
                 Map<String, List<Map<String, Object>>> groupedResults = new LinkedHashMap<>();
                 double totalObtAll = 0, totalMaxAll = 0;
                 String bestSub = "N/A"; double bestSubPerc = -1;
-                int classRank = 0;
+                // classRank already declared at top
 
                 Connection connRes = null;
                 try {
@@ -1680,23 +1687,14 @@
                         }
                     }
                     
-                    // 10. Calculate Class Rank
-                    if(sClassName != null && sSection != null) {
-                        String rankSql = "SELECT student_id, AVG(marks_obtained*100.0/total_marks) as avg_p " +
-                                       "FROM results WHERE student_id IN (SELECT student_id FROM students WHERE class = ? AND section = ?) " +
-                                       "GROUP BY student_id ORDER BY avg_p DESC";
-                        PreparedStatement psRank = connRes.prepareStatement(rankSql);
-                        psRank.setString(1, sClassName);
-                        psRank.setString(2, sSection);
-                        ResultSet rsRank = psRank.executeQuery();
-                        int currentPos = 1;
-                        while(rsRank.next()) {
-                            if(rsRank.getInt("student_id") == sId) {
-                                classRank = currentPos;
-                                break;
-                            }
-                            currentPos++;
-                        }
+                    // 10. Calculate Class Rank (Efficient)
+                    if(sClassName != null) {
+                        String rnkSql = "SELECT rnk FROM (SELECT student_id, RANK() OVER (ORDER BY AVG(marks_obtained*100.0/total_marks) DESC) as rnk FROM results WHERE class = ? GROUP BY student_id) t WHERE student_id = ?";
+                        PreparedStatement psRnk = connRes.prepareStatement(rnkSql);
+                        psRnk.setString(1, sClassName);
+                        psRnk.setInt(2, sId);
+                        ResultSet rsRnk = psRnk.executeQuery();
+                        if(rsRnk.next()) classRank = rsRnk.getInt("rnk");
                     }
                     pageContext.setAttribute("classRank", classRank > 0 ? "#" + classRank : "N/A");
                 } catch(Exception e) { e.printStackTrace(); }
@@ -1722,7 +1720,7 @@
                 <div class="col-md-4">
                   <div class="stat">
                     <div class="stat-ico" style="background:#d1fae5;color:#059669;"><i class="bi bi-graph-up-arrow"></i></div>
-                    <h3>${classRank}</h3>
+                    <h3><%= pageContext.getAttribute("classRank") %></h3>
                     <p>Class Rank</p><span class="tag tag-green"><%= classRank == 1 ? "Top Performer! 🏆" : "Keep improving!" %></span>
                   </div>
                 </div>
@@ -2117,8 +2115,10 @@
                 Connection connNS = null;
                 try {
                     connNS = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
-                    String nsSql = "SELECT * FROM notices WHERE (target IN ('all', 'students') AND student_id IS NULL) OR student_id = " + sId + " ORDER BY published_at DESC";
-                    ResultSet rsNS = connNS.createStatement().executeQuery(nsSql);
+                    String nsSql = "SELECT * FROM notices WHERE (target IN ('all', 'students') AND student_id IS NULL) OR student_id = ? ORDER BY published_at DESC";
+                    PreparedStatement psNS = connNS.prepareStatement(nsSql);
+                    psNS.setInt(1, sId);
+                    ResultSet rsNS = psNS.executeQuery();
                     boolean hasNoticesS = false;
                     while(rsNS.next()) {
                         hasNoticesS = true;
@@ -2126,6 +2126,16 @@
                         String msg = rsNS.getString("message");
                         String priority = rsNS.getString("priority");
                         Timestamp time = rsNS.getTimestamp("published_at");
+                        int nid = rsNS.getInt("notice_id");
+                        
+                        // Mark as read
+                        try (Connection connMark = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "")) {
+                            String markSql = "INSERT IGNORE INTO notice_views (notice_id, student_id) VALUES (?, ?)";
+                            PreparedStatement psMark = connMark.prepareStatement(markSql);
+                            psMark.setInt(1, nid);
+                            psMark.setInt(2, sId);
+                            psMark.executeUpdate();
+                        } catch(Exception ex) {}
                         
                         String borderCol = "urgent".equals(priority) ? "var(--red)" : ("important".equals(priority) ? "var(--yellow)" : "var(--accent)");
                         String bgCol = "urgent".equals(priority) ? "#fff5f5" : ("important".equals(priority) ? "#fffbeb" : "#f0fdf4");

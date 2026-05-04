@@ -652,7 +652,7 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
 
                           <div class="s-brand-text">
 
-                            <h6>EduManage</h6>
+                            <h6><%= schoolName %></h6>
 
                             <small>Admin Control Panel</small>
 
@@ -1063,22 +1063,14 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
 
                           </div>
 
-                          <div class="row g-3">
-
+                          <div class="row g-3 mb-4">
                             <!-- Attendance by class -->
-
                             <div class="col-12 col-lg-6">
-
                               <div class="card-box">
-
                                 <div class="card-head">
-
                                   <i class="bi bi-calendar-check-fill" style="color:var(--accent);"></i>
-
                                   <h6>Class-wise Attendance Today</h6>
-
                                 </div>
-
                                 <div class="card-body-p">
                                   <% if(classAttendance.isEmpty()) { %>
                                     <div class="p-4 text-center text-muted">No attendance data for today</div>
@@ -1103,139 +1095,93 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                                       </div>
                                       <% attColorIdx++; } } %>
                                 </div>
-
                               </div>
-
                             </div>
 
-                            <!-- Recent Activity -->
+                            <!-- Fee Collection Progress (Moved up) -->
                             <div class="col-12 col-lg-6">
+                              <div class="card-box">
+                                <div class="card-head">
+                                  <i class="bi bi-cash-coin" style="color:var(--yellow);"></i>
+                                  <h6>Fee Collection — <%= monthName %> <%= currentYear %></h6>
+                                </div>
+                                <div class="card-body-p">
+                                  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+                                    <span style="font-size:32px;font-weight:800;font-family:'JetBrains Mono',monospace;">₹<%= String.format("%.1f", feesCollected / 1000.0) %>K</span>
+                                    <span style="color:var(--muted);font-size:13px;">of ₹<%= String.format("%.1f", totalExpectedFees / 1000.0) %>K</span>
+                                  </div>
+                                  <% double feePercent=totalExpectedFees> 0 ? (feesCollected * 100 / totalExpectedFees) : 0; %>
+                                    <div class="prog-bar-wrap mb-3" style="height:10px;">
+                                      <div class="prog-bar" style="width:<%= feePercent %>%;background:linear-gradient(90deg,#f97316,#fbbf24);"></div>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                      <div>
+                                        <div class="info-label">Collected</div>
+                                        <div style="font-weight:700;color:var(--green);"><%= feesCollectedCount %> Students</div>
+                                      </div>
+                                      <div style="text-align:right;">
+                                        <div class="info-label">Pending</div>
+                                        <div style="font-weight:700;color:var(--red);"><%= feesPendingCount %> Students</div>
+                                      </div>
+                                    </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="row g-3 mb-4">
+                            <!-- Recent Activity (Full Width) -->
+                            <div class="col-12">
                               <div class="card-box">
                                 <div class="card-head d-flex justify-content-between align-items-center">
                                   <div class="d-flex align-items-center gap-2">
                                     <i class="bi bi-lightning-charge-fill" style="color:var(--purple);"></i>
                                     <h6>Recent Activity</h6>
                                   </div>
-                                  <button class="btn-icon" style="border:none; background:transparent;"><i
-                                      class="bi bi-three-dots"></i></button>
+                                  <button class="btn-icon" style="border:none; background:transparent;"><i class="bi bi-three-dots"></i></button>
                                 </div>
                                 <div class="card-body-p">
                                   <% if(recentActivities.isEmpty()) { %>
                                     <div class="p-4 text-center text-muted">No recent activity</div>
                                     <% } else { for(DashActivity act : recentActivities) { %>
                                       <div class="activity-item">
-                                        <div class="act-ico" style="background:<%= act.color %>;"><i
-                                            class="bi <%= act.icon %>"></i></div>
+                                        <div class="act-ico" style="background:<%= act.color %>;"><i class="bi <%= act.icon %>"></i></div>
                                         <div class="act-text">
-                                          <p>
-                                            <%= act.title %>
-                                          </p>
-                                          <small>
-                                            <%= act.subtitle %>
-                                          </small>
+                                          <p><%= act.title %></p>
+                                          <small><%= act.subtitle %></small>
                                         </div>
-                                        <div class="act-time">
-                                          <%= act.time %>
-                                        </div>
+                                        <div class="act-time"><%= act.time %></div>
                                       </div>
                                       <% } } %>
                                 </div>
                                 <div class="p-3 text-center" style="border-top:1px solid var(--border);">
-                                  <a href="#" class="text-accent fw-bold"
-                                    style="font-size: 12px; text-decoration:none; color:var(--accent);"
-                                    onclick="showPage('activity', this)">View All Activity <i
-                                      class="bi bi-chevron-right"></i></a>
+                                  <a href="#" class="text-accent fw-bold" style="font-size: 12px; text-decoration:none; color:var(--accent);" onclick="showPage('activity', this)">View All Activity <i class="bi bi-chevron-right"></i></a>
                                 </div>
                               </div>
                             </div>
                           </div>
 
-                          <div class="row g-3">
-                            <!-- Fee Collection Progress -->
-                            <div class="col-12 col-md-5">
-
+                          <div class="row g-3 mb-4">
+                            <!-- Top performers (Full Width) -->
+                            <div class="col-12">
                               <div class="card-box">
-
                                 <div class="card-head">
-                                  <i class="bi bi-cash-coin" style="color:var(--yellow);"></i>
-                                  <h6>Fee Collection — <%= monthName %>
-                                      <%= currentYear %>
-                                  </h6>
-                                </div>
-                                <div class="card-body-p">
-                                  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
-                                    <span
-                                      style="font-size:32px;font-weight:800;font-family:'JetBrains Mono',monospace;">₹
-                                      <%= String.format("%.1f", feesCollected / 1000.0) %>K</span>
-                                    <span style="color:var(--muted);font-size:13px;">of ₹<%= String.format("%.1f",
-                                        totalExpectedFees / 1000.0) %>K</span>
-                                  </div>
-                                  <% double feePercent=totalExpectedFees> 0 ? (feesCollected * 100 / totalExpectedFees)
-                                    : 0; %>
-                                    <div class="prog-bar-wrap mb-3" style="height:10px;">
-                                      <div class="prog-bar"
-                                        style="width:<%= feePercent %>%;background:linear-gradient(90deg,#f97316,#fbbf24);">
-                                      </div>
-                                    </div>
-                                    <div class="d-flex justify-content-between">
-                                      <div>
-                                        <div class="info-label">Collected</div>
-                                        <div style="font-weight:700;color:var(--green);">
-                                          <%= feesCollectedCount %> Students
-                                        </div>
-                                      </div>
-                                      <div style="text-align:right;">
-                                        <div class="info-label">Pending</div>
-                                        <div style="font-weight:700;color:var(--red);">
-                                          <%= feesPendingCount %> Students
-                                        </div>
-                                      </div>
-                                    </div>
-                                </div>
-
-                              </div>
-
-                            </div>
-
-                            <!-- Top performers -->
-
-                            <div class="col-12 col-md-7">
-
-                              <div class="card-box">
-
-                                <div class="card-head">
-
                                   <i class="bi bi-trophy-fill" style="color:var(--yellow);"></i>
-
                                   <h6>Top Performers — Half Yearly</h6>
-
                                 </div>
-
                                 <div class="card-body-p" style="padding-top:12px;">
-
                                   <table class="table tbl mb-0">
-
                                     <thead>
-
                                       <tr>
-
                                         <th>Rank</th>
-
                                         <th>Student</th>
-
                                         <th>Class</th>
-
                                         <th>Score</th>
-
                                       </tr>
-
                                     </thead>
-
                                     <tbody>
-
                                       <% Connection connTop=null; try { Class.forName("com.mysql.cj.jdbc.Driver");
-                                        connTop=DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root"
-                                        , "" ); String
+                                        connTop=DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "" ); String
                                         topSql="SELECT s.name, s.class, s.section, AVG(r.marks_obtained * 100.0 / r.total_marks) as avg_score "
                                         + "FROM students s JOIN results r ON s.student_id = r.student_id "
                                         + "GROUP BY s.student_id ORDER BY avg_score DESC LIMIT 3" ; ResultSet
@@ -1246,56 +1192,21 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                                         cls_=rsTop.getString("class"); String sec_=rsTop.getString("section"); double
                                         score=rsTop.getDouble("avg_score"); String initials=name.substring(0,
                                         Math.min(2, name.length())).toUpperCase(); %>
-
                                         <tr>
-
-                                          <td><span
-                                              style="font-weight:800; font-family:'JetBrains Mono', monospace; color:<%= rankColors[rank-1] %>;">#
-                                              <%= rank %></span></td>
-
+                                          <td><span style="font-weight:800; font-family:'JetBrains Mono', monospace; color:<%= rankColors[rank-1] %>;">#<%= rank %></span></td>
                                           <td>
-
                                             <div class="d-flex align-items-center gap-2">
-
-                                              <div class="av-sm"
-                                                style="background:<%= avBgs[rank-1]%>;color:<%= avTcs[rank-1]%>;">
-
-                                                <%= initials%>
-
-                                              </div>
-
+                                              <div class="av-sm" style="background:<%= avBgs[rank-1]%>;color:<%= avTcs[rank-1]%>;"><%= initials%></div>
                                               <%= name%>
-
                                             </div>
-
                                           </td>
-
-                                          <td>
-
-                                            <%= cls_%>
-                                              <%= sec_%>
-
-                                          </td>
-
-                                          <td><span class="tag <%= score >= 90 ? " tag-yellow" : (score>= 75 ? "tag-green" : "tag-blue") %>"><%= String.format("%.1f", score) %>%</span>
-                                          </td>
-
+                                          <td><%= cls_%> <%= sec_%></td>
+                                          <td><span class="tag <%= score >= 90 ? "tag-yellow" : (score>= 75 ? "tag-green" : "tag-blue") %>"><%= String.format("%.1f", score) %>%</span></td>
                                         </tr>
-
                                         <% rank++; } if(rank==1) { %>
-
-                                          <tr>
-
-                                            <td colspan="4" class="text-center py-3 text-muted">No results recorded yet.
-                                            </td>
-
-                                          </tr>
-
-                                          <% } } catch(Exception e) { e.printStackTrace(); } finally { if(connTop
-                                            !=null) try { connTop.close(); } catch(Exception e) {} } %>
-
+                                          <tr><td colspan="4" class="text-center py-3 text-muted">No results recorded yet.</td></tr>
+                                          <% } } catch(Exception e) { e.printStackTrace(); } finally { if(connTop !=null) try { connTop.close(); } catch(Exception e) {} } %>
                                     </tbody>
-
                                   </table>
 
                                 </div>
@@ -1428,7 +1339,7 @@ String
 
                             <div class="role-text" id="profile-role">
 
-                              <%= adDesignation%> • EduManage System
+                              <%= adDesignation%> • <%= schoolName %> System
 
                             </div>
 
@@ -1477,7 +1388,7 @@ String
                               <% } %>
 
                                 <% if (hasPersonalInfo) { %>
-                                  <div class="col-12 col-lg-7">
+                                  <div class="col-12">
                                     <div class="card-box">
                                       <div class="card-head"><i class="bi bi-person-fill"
                                           style="color:var(--accent);"></i>
@@ -1534,7 +1445,7 @@ String
                                   <% } %>
 
                                     <% if (hasProfessionalInfo) { %>
-                                      <div class="col-12 col-lg-5">
+                                      <div class="col-12">
                                         <div class="card-box mb-3">
                                           <div class="card-head"><i class="bi bi-briefcase-fill"
                                               style="color:var(--blue);"></i>
@@ -1660,7 +1571,7 @@ String
 
                           <div class="row g-3 mb-3">
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -1683,7 +1594,7 @@ String
 
                             </div>
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -1706,7 +1617,7 @@ String
 
                             </div>
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -1729,7 +1640,7 @@ String
 
                             </div>
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -2013,7 +1924,7 @@ String
 
                           <div class="row g-3 mb-3">
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -2036,7 +1947,7 @@ String
 
                             </div>
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -2059,7 +1970,7 @@ String
 
                             </div>
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -2082,7 +1993,7 @@ String
 
                             </div>
 
-                            <div class="col-6 col-md-3">
+                            <div class="col-12">
 
                               <div class="mini-stat">
 
@@ -2308,7 +2219,7 @@ String
 
                           <div class="row g-4 mb-4">
 
-                            <div class="col-md-4">
+                            <div class="col-12">
 
                               <div class="stat">
 
@@ -2333,7 +2244,7 @@ String
 
                             </div>
 
-                            <div class="col-md-4">
+                            <div class="col-12">
 
                               <div class="stat">
 
@@ -2358,7 +2269,7 @@ String
 
                             </div>
 
-                            <div class="col-md-4">
+                            <div class="col-12">
 
                               <div class="stat working-days-card" style="position:relative; cursor:default;">
 
@@ -2660,7 +2571,7 @@ String
 
                           <div class="row g-3 mb-3">
 
-                            <div class="col-md-3">
+                            <div class="col-12">
 
                               <div class="stat">
 
@@ -2681,7 +2592,7 @@ String
 
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col-12">
 
                               <div class="stat">
 
@@ -2702,7 +2613,7 @@ String
 
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col-12">
 
                               <div class="stat">
 
@@ -2723,7 +2634,7 @@ String
 
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col-12">
 
                               <div class="stat">
 
@@ -3117,7 +3028,7 @@ String
 
                             <div class="row g-3 mb-3">
 
-                              <div class="col-6 col-md-3">
+                              <div class="col-12">
 
                                 <div class="stat">
 
@@ -3136,7 +3047,7 @@ String
 
                               </div>
 
-                              <div class="col-6 col-md-3">
+                              <div class="col-12">
 
                                 <div class="stat">
 
@@ -3159,7 +3070,7 @@ String
 
                               </div>
 
-                              <div class="col-6 col-md-3">
+                              <div class="col-12">
 
                                 <div class="stat">
 
@@ -3178,7 +3089,7 @@ String
 
                               </div>
 
-                              <div class="col-6 col-md-3">
+                              <div class="col-12">
 
                                 <div class="stat">
 
