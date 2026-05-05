@@ -40,7 +40,6 @@
                 if (conn != null) try { conn.close(); } catch(Exception e) {}
                 }
 
-                // Conditional Display Logic for Profile Sections
                 boolean hasPersonalInfo = (tName != null && !tName.trim().isEmpty())
                 && (tDob != null && !tDob.trim().isEmpty())
                 && (tGender != null && !tGender.trim().isEmpty())
@@ -54,40 +53,34 @@
                 && (tDept != null && !tDept.trim().isEmpty())
                 && (tQual != null && !tQual.trim().isEmpty());
 
-                // Fetch Dashboard Stats & Assigned Classes
                 int myClassesCount = 0;
                 int totalStudentsCount = 0;
                 int pendingAssignmentsCount = 0; 
                 double classAvgPercent = 0.0;
-                String schoolName = "EduManage"; // Default
+                String schoolName = "EduManage"; 
                 List<Map<String, String>> assignedClasses = new ArrayList<>();
-                
-                // Results Page Data
+
                 int totalDistinctions = 0;
                 int totalFailed = 0;
                 List<Map<String, Object>> resultsSummary = new ArrayList<>();
 
-                // Assignments Data
                 List<Map<String, String>> pendingAsgns = new ArrayList<>();
                 List<Map<String, String>> completedAsgns = new ArrayList<>();
 
-                // Leave Data
                 int casualTotal=0, medicalTotal=0, earnedTotal=0;
                 int casualUsed=0, medicalUsed=0, earnedUsed=0;
                 int pendingLeaveCount=0;
                 int totalLeaveAllotted=0, totalLeaveUsed=0, totalLeaveAvailable=0;
                 int totalNoticesCount = 0;
                 List<Map<String, String>> leaveHistory = new ArrayList<>();
-                
+
                 Connection connD = null;
                 try {
                     connD = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
-                    
-                    // School Name
+
                     ResultSet rsSN = connD.createStatement().executeQuery("SELECT config_value FROM settings WHERE config_key='school_name'");
                     if(rsSN.next()) schoolName = rsSN.getString(1);
 
-                    // 0. Initialize lists to prevent NullPointerExceptions
                     if(assignedClasses == null) assignedClasses = new ArrayList<>();
                     if(resultsSummary == null) resultsSummary = new ArrayList<>();
                     if(pendingAsgns == null) pendingAsgns = new ArrayList<>();
@@ -95,7 +88,7 @@
                     if(leaveHistory == null) leaveHistory = new ArrayList<>();
 
                     if (tId != null && !tId.isEmpty()) {
-                        // 1. My Classes Count & List
+
                         try {
                         String classesSql = "SELECT DISTINCT class, section FROM timetable WHERE teacher_id = ? ORDER BY class, section";
                         PreparedStatement psClasses = connD.prepareStatement(classesSql);
@@ -108,15 +101,13 @@
                                 String sVal = rsClasses.getString("section");
                                 c.put("class", cVal);
                                 c.put("section", sVal);
-                                
-                                // Get student count for this class
+
                                 PreparedStatement psSC = connD.prepareStatement("SELECT COUNT(*) FROM students WHERE class = ? AND section = ?");
                                 psSC.setString(1, cVal);
                                 psSC.setString(2, sVal);
                                 ResultSet rsSC = psSC.executeQuery();
                                 if(rsSC.next()) c.put("student_count", rsSC.getString(1)); else c.put("student_count", "0");
-                                
-                                // Get performance for this class
+
                                 PreparedStatement psPerf = connD.prepareStatement("SELECT AVG(marks_obtained / total_marks * 100) FROM results WHERE class = ? AND section = ? AND teacher_id = ?");
                                 psPerf.setString(1, cVal);
                                 psPerf.setString(2, sVal);
@@ -125,27 +116,25 @@
                                 double perf = 0.0;
                                 if(rsPerf.next()) perf = rsPerf.getDouble(1);
                                 c.put("performance", String.format("%.1f", perf));
-                                
-                                // Get today's attendance for this class
+
                                 PreparedStatement psPres = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'present'");
                                 psPres.setString(1, cVal);
                                 psPres.setString(2, sVal);
                                 ResultSet rsPres = psPres.executeQuery();
                                 if(rsPres.next()) c.put("present_today", rsPres.getString(1)); else c.put("present_today", "0");
-                                
+
                                 PreparedStatement psAbs = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'absent'");
                                 psAbs.setString(1, cVal);
                                 psAbs.setString(2, sVal);
                                 ResultSet rsAbs = psAbs.executeQuery();
                                 if(rsAbs.next()) c.put("absent_today", rsAbs.getString(1)); else c.put("absent_today", "0");
-                                
+
                                 assignedClasses.add(c);
                                 myClassesCount++;
                             } catch (Exception e) { System.err.println("Error processing class row: " + e.getMessage()); }
                         }
                     } catch (Exception e) { System.err.println("Error fetching classes: " + e.getMessage()); }
-                        
-                        // 2. Total Students Count
+
                         try {
                         String studentsSql = "SELECT COUNT(*) FROM students WHERE (class, section) IN (SELECT DISTINCT class, section FROM timetable WHERE teacher_id = ?)";
                         PreparedStatement psStudents = connD.prepareStatement(studentsSql);
@@ -153,8 +142,7 @@
                         ResultSet rsStudents = psStudents.executeQuery();
                         if(rsStudents.next()) totalStudentsCount = rsStudents.getInt(1);
                         } catch (Exception e) { System.err.println("Error fetching student count: " + e.getMessage()); }
-                        
-                        // 3. Class Average
+
                         try {
                         String avgSql = "SELECT AVG(marks_obtained / total_marks * 100) FROM results WHERE teacher_id = ?";
                         PreparedStatement psAvg = connD.prepareStatement(avgSql);
@@ -163,7 +151,6 @@
                         if(rsAvg.next()) classAvgPercent = rsAvg.getDouble(1);
                         } catch (Exception e) { System.err.println("Error fetching class avg: " + e.getMessage()); }
 
-                        // 4. Results Stats (Distinctions & Failed)
                         try {
                             String statsSql = "SELECT " +
                                     "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 80 THEN 1 ELSE 0 END) as distinctions, " +
@@ -177,8 +164,7 @@
                                 totalFailed = rsStats.getInt("failed");
                             }
                         } catch (Exception e) { System.err.println("Error fetching result stats: " + e.getMessage()); }
-                        
-                        // 5. Class-wise summary for Results Page
+
                         try {
                             for(Map<String, String> c : assignedClasses) {
                                 Map<String, Object> r = new HashMap<>();
@@ -186,7 +172,7 @@
                                 String sVal = c.get("section");
                                 r.put("class", cVal + "-" + sVal);
                                 r.put("total_students", c.get("student_count"));
-                                
+
                                 String classStatsSql = "SELECT COUNT(DISTINCT student_id) as appeared, " +
                                         "SUM(CASE WHEN (marks_obtained/total_marks*100) >= 33 THEN 1 ELSE 0 END) as passed, " +
                                         "SUM(CASE WHEN (marks_obtained/total_marks*100) < 33 THEN 1 ELSE 0 END) as failed, " +
@@ -209,7 +195,6 @@
                             }
                         } catch (Exception e) { System.err.println("Error fetching results summary: " + e.getMessage()); }
 
-                        // 6. Fetch Assignments
                         try {
                             String sqlA = "SELECT a.*, (SELECT COUNT(*) FROM assignment_submissions s WHERE s.assignment_id = a.assignment_id) as sub_count " +
                                          "FROM assignments a WHERE a.teacher_id = ? ORDER BY a.due_date ASC";
@@ -240,7 +225,6 @@
                             pendingAssignmentsCount = pendingAsgns.size();
                         } catch (Exception e) { System.err.println("Error fetching assignments: " + e.getMessage()); }
 
-                        // 7. Fetch Leave Balance & Pending Count
                         try {
                             String balSql = "SELECT * FROM leave_balance WHERE teacher_id = ?";
                             PreparedStatement psBal = connD.prepareStatement(balSql);
@@ -259,13 +243,12 @@
                             psPend.setString(1, tId);
                             ResultSet rsPend = psPend.executeQuery();
                             if(rsPend.next()) pendingLeaveCount = rsPend.getInt(1);
-                            
+
                             totalLeaveAllotted = casualTotal + medicalTotal + earnedTotal;
                             totalLeaveUsed = casualUsed + medicalUsed + earnedUsed;
                             totalLeaveAvailable = totalLeaveAllotted - totalLeaveUsed;
                         } catch (Exception e) { System.err.println("Error fetching leave balance: " + e.getMessage()); }
 
-                        // 8. Fetch Leave History
                         try {
                             String histSql = "SELECT * FROM leave_applications WHERE teacher_id = ? ORDER BY applied_at DESC";
                             PreparedStatement psHist = connD.prepareStatement(histSql);
@@ -286,7 +269,6 @@
                             }
                         } catch (Exception e) { System.err.println("Error fetching leave history: " + e.getMessage()); }
 
-                        // 9. Fetch Notices Count
                         String countNoticesSql = "SELECT COUNT(*) FROM notices WHERE target IN ('all', 'teachers') AND student_id IS NULL";
                         PreparedStatement psNC = connD.prepareStatement(countNoticesSql);
                         ResultSet rsNC = psNC.executeQuery();
@@ -350,7 +332,6 @@
                             overflow-x: hidden
                         }
 
-                        /* SIDEBAR */
                         .sidebar {
                             width: var(--sidebar-w);
                             background: var(--sidebar);
@@ -579,7 +560,6 @@
                             color: var(--red)
                         }
 
-                        /* MAIN */
                         .main {
                             margin-left: var(--sidebar-w);
                             flex: 1;
@@ -683,7 +663,6 @@
                             cursor: pointer
                         }
 
-                        /* PAGES */
                         .page {
                             display: none;
                             padding: 26px 30px;
@@ -727,7 +706,6 @@
                             margin: 4px 0 0
                         }
 
-                        /* Cards */
                         .cbox {
                             background: var(--card);
                             border-radius: 16px;
@@ -752,7 +730,6 @@
                             padding: 20px
                         }
 
-                        /* Stats */
                         .stat {
                             background: var(--card);
                             border-radius: 16px;
@@ -872,7 +849,6 @@
                             border-radius: 100px
                         }
 
-                        /* Buttons */
                         .btn-a {
                             background: var(--accent);
                             color: #fff;
@@ -1063,7 +1039,6 @@
                             font-size: 12px
                         }
 
-                        /* LEAVE PAGE */
                         .leave-hero {
                             background: linear-gradient(135deg, #0d1f12, #052e16);
                             border-radius: 18px;
@@ -1211,7 +1186,6 @@
                             color: var(--muted)
                         }
 
-                        /* PROFILE HERO */
                         .prof-hero {
                             background: linear-gradient(135deg, #0d1f12 0%, #052e16 50%, #0d1f12 100%);
                             border-radius: 20px;
@@ -1362,7 +1336,6 @@
                             font-weight: 600
                         }
 
-                        /* MODAL */
                         .mback {
                             position: fixed;
                             inset: 0;
@@ -1525,7 +1498,6 @@
                             box-shadow: 0 4px 14px rgba(34, 197, 94, .3)
                         }
 
-                        /* Leave Form Modal */
                         .lback {
                             position: fixed;
                             inset: 0;
@@ -1583,7 +1555,6 @@
 
                 <body>
 
-                    <!-- SIDEBAR -->
                     <aside class="sidebar" id="sidebar">
                         <div class="s-brand">
                             <div class="s-brand-icon"><i class="bi bi-person-video3"></i></div>
@@ -1647,7 +1618,6 @@
                         </div>
                     </aside>
 
-                    <!-- MAIN -->
                     <div class="main">
                         <div class="topbar">
                             <button class="mob-toggle" onclick="toggleSidebar()"><i class="bi bi-list"></i></button>
@@ -1663,7 +1633,6 @@
                             </div>
                         </div>
 
-                        <!-- DASHBOARD -->
                         <div class="page active" id="page-dashboard">
                             <div class="pg-header">
                                 <div class="pg-header-left">
@@ -1713,7 +1682,7 @@
                             </div>
 
                             <div class="row g-3">
-                                <!-- Today Schedule -->
+
                                 <div class="col-12 col-lg-5">
                                     <div class="cbox">
                                         <div class="chead"><i class="bi bi-clock-fill" style="color:var(--accent)"></i>
@@ -1764,7 +1733,6 @@
                                     </div>
                                 </div>
 
-                                <!-- Class Performance -->
                                 <div class="col-12 col-lg-7">
                                     <div class="cbox">
                                         <div class="chead"><i class="bi bi-bar-chart-fill"
@@ -1801,7 +1769,6 @@
                                     </div>
                                 </div>
 
-                                <!-- Pending Assignments -->
                                 <div class="col-12 col-lg-6">
                                     <div class="cbox">
                                         <div class="chead"><i class="bi bi-clipboard2-check-fill"
@@ -1821,11 +1788,11 @@
                                                     String tagCls = "tg";
                                                     if("Urgent".equals(tag)) tagCls = "tr";
                                                     else if("Soon".equals(tag)) tagCls = "ty";
-                                                    
+
                                                     String[] asgnIcons = {"bi-flask-fill", "bi-lightning-fill", "bi-wind", "bi-atom", "bi-soundwave"};
                                                     String[] asgnBgs = {"#dcfce7", "#dbeafe", "#ede9fe", "#fef3c7", "#fee2e2"};
                                                     String[] asgnCls = {"#16a34a", "#2563eb", "#7c3aed", "#d97706", "#dc2626"};
-                                                    
+
                                                     String bg = asgnBgs[dIdx % asgnBgs.length];
                                                     String cl = asgnCls[dIdx % asgnCls.length];
                                                     String ico = asgnIcons[dIdx % asgnIcons.length];
@@ -1848,7 +1815,6 @@
                                     </div>
                                 </div>
 
-                                <!-- Leave Quick View -->
                                 <div class="col-12 col-lg-6">
                                     <div class="cbox">
                                         <div class="chead"><i class="bi bi-calendar2-x-fill"
@@ -1904,7 +1870,6 @@
                             </div>
                         </div>
 
-                        <!-- PROFILE -->
                         <div class="page" id="page-profile">
                             <div class="prof-hero">
                                 <button class="pedit-btn" onclick="openEditModal()"><i
@@ -2112,11 +2077,10 @@
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                </div> <!-- Closes col-12 col-lg-5 -->
-                                    </div> <!-- Closes row g-3 -->
-                        </div> <!-- Closes page-profile -->
+                                                </div> 
+                                    </div> 
+                        </div> 
 
-                        <!-- MY CLASSES -->
                         <div class="page" id="page-myclasses">
                             <div class="pg-header">
                                 <div class="pg-header-left">
@@ -2158,7 +2122,7 @@
                                                 class="bi bi-calendar-check-fill"></i></div>
                                         <div>
                                             <%
-                                                // Calculate overall avg attendance for today
+
                                                 int totalPres = 0;
                                                 try {
                                                     for(Map<String, String> c : assignedClasses) {
@@ -2222,7 +2186,6 @@
                             </div>
                         </div>
 
-                        <!-- TIMETABLE -->
                         <div class="page" id="page-timetable">
                             <div class="pg-header">
                                 <div class="pg-header-left">
@@ -2259,8 +2222,7 @@
                                                         PreparedStatement psTTW = connTTW.prepareStatement(ttWeeklySql);
                                                         psTTW.setString(1, tId);
                                                         ResultSet rsTTW = psTTW.executeQuery();
-                                                        
-                                                        // Group by time slots
+
                                                         Map<String, Map<String, String[]>> scheduleMap = new LinkedHashMap<>();
                                                         java.util.Set<String> uniqueClasses = new java.util.LinkedHashSet<>();
                                                         while(rsTTW.next()) {
@@ -2270,19 +2232,19 @@
                                                             String dayName = rsTTW.getString("day");
                                                             String classVal = rsTTW.getString("class") + "-" + rsTTW.getString("section");
                                                             String subjectVal = rsTTW.getString("subject");
-                                                            
+
                                                             if(!scheduleMap.containsKey(timeKey)) scheduleMap.put(timeKey, new HashMap<>());
                                                             scheduleMap.get(timeKey).put(dayName, new String[]{classVal, subjectVal});
                                                             uniqueClasses.add(classVal);
                                                         }
-                                                        
+
                                                         String[] colors = {"#22c55e", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4"};
                                                         int colorIdx = 0;
                                                         for(String c : uniqueClasses) {
                                                             classColors.put(c, colors[colorIdx % colors.length]);
                                                             colorIdx++;
                                                         }
-                                                        
+
                                                         if(scheduleMap.isEmpty()) {
                                                 %>
                                                     <tr><td colspan="7" class="text-center py-4 text-muted">Aapka weekly timetable abhi tak set nahi kiya gaya hai.</td></tr>
@@ -2333,20 +2295,16 @@
                             </div>
                         </div>
 
-                        <!-- MARK ATTENDANCE -->
                         <div class="page" id="page-attendance">
                              <%
                                 String selClass = request.getParameter("class");
                                 String selSec = request.getParameter("section");
-                                
-                                // Clean null strings
+
                                 if ("null".equals(selClass)) selClass = null;
                                 if ("null".equals(selSec)) selSec = null;
 
                                 if(selClass == null && assignedClasses != null && assignedClasses.size() > 0) {
-                                    // Don't auto-select if user specifically wants to choose
-                                    // selClass = assignedClasses.get(0).get("class");
-                                    // selSec = assignedClasses.get(0).get("section");
+
                                 }
                             %>
                             <div class="pg-header">
@@ -2398,7 +2356,7 @@
                                     </div>
                                 </div>
                             <% } else { %>
-                                <!-- Rest of the attendance UI when class is selected -->
+
                             <div class="cbox mb-3">
                                 <div class="chead">
                                     <h6>Select Class</h6>
@@ -2438,7 +2396,7 @@
                                     <input type="hidden" name="class" value="<%= selClass %>">
                                     <input type="hidden" name="section" value="<%= selSec %>">
                                     <input type="hidden" name="teacher_id" value="<%= tId %>">
-                                    
+
                                     <div class="table-responsive">
                                         <table class="table tbl mb-0">
                                             <thead>
@@ -2477,12 +2435,12 @@
                                                                     initials = parts[0].substring(0,1).toUpperCase();
                                                                     if(parts.length > 1) initials += parts[1].substring(0,1).toUpperCase();
                                                                 }
-                                                                
+
                                                                 String[] colorP = {"#dcfce7", "#dbeafe", "#fef3c7", "#ede9fe"};
                                                                 String[] textP = {"#16a34a", "#2563eb", "#d97706", "#7c3aed"};
                                                                 String pCol = colorP[count % 4];
                                                                 String tCol = textP[count % 4];
-                                                                
+
                                                                 boolean isMarked = (statusToday != null);
                                                 %>
                                                 <tr>
@@ -2546,8 +2504,6 @@
                             <% } %>
                         </div>
 
-
-                        <!-- ASSIGNMENTS -->
                         <div class="page" id="page-assignments">
                             <div class="pg-header">
                                 <div class="pg-header-left">
@@ -2556,8 +2512,6 @@
                                 </div>
                                 <button class="btn-a" onclick="openAssignmentModal()"><i class="bi bi-plus-lg"></i> Naya Assignment Do</button>
                             </div>
-                            
-                            <!-- Assignments already fetched at top -->
 
                             <div class="cbox mb-3">
                                 <div class="chead"><i class="bi bi-hourglass-split" style="color:var(--red)"></i>
@@ -2624,7 +2578,6 @@
                             </div>
                         </div>
 
-                        <!-- RESULTS & MARKS -->
                         <div class="page" id="page-results">
                             <div class="pg-header">
                                 <div class="pg-header-left">
@@ -2716,7 +2669,6 @@
                             </div>
                         </div>
 
-                        <!-- ═══ LEAVE APPLICATION ═══ -->
                         <div class="page" id="page-leave">
                             <div class="pg-header">
                                 <div class="pg-header-left">
@@ -2728,8 +2680,7 @@
                             </div>
 
                             <% 
-                                // Leave balance already fetched at top
-                                
+
                                 if (tId == null || tId.isEmpty()) {
                                     out.println("<div class='alert alert-warning'>Teacher profile incomplete. Please update your profile to use leave features.</div>");
                                 } else {
@@ -2854,11 +2805,10 @@
                                 </div>
                             </div>
                             <%
-                                } // Close tId else
+                                } 
                             %>
                         </div>
 
-                        <!-- NOTICES -->
                         <div class="page" id="page-notices">
                             <div class="pg-header">
                                 <div class="pg-header-left">
@@ -2880,7 +2830,7 @@
                                         String msg = rsNT.getString("message");
                                         String priority = rsNT.getString("priority");
                                         Timestamp time = rsNT.getTimestamp("published_at");
-                                        
+
                                         String borderCol = "urgent".equals(priority) ? "var(--red)" : ("important".equals(priority) ? "var(--yellow)" : "var(--accent)");
                                         String bgCol = "urgent".equals(priority) ? "#fff5f5" : ("important".equals(priority) ? "#fffbeb" : "#f0fdf4");
                                         String tagClass = "urgent".equals(priority) ? "tag-red" : ("important".equals(priority) ? "tag-yellow" : "tag-green");
@@ -2912,9 +2862,8 @@
                             </div>
                         </div>
 
-                    </div><!-- end main -->
+                    </div>
 
-                    <!-- PROFILE EDIT MODAL -->
                     <div class="mback" id="editModal" onclick="closeEditOutside(event)">
                         <div class="emodal">
                             <div class="ehead">
@@ -3006,7 +2955,6 @@
                         </div>
                     </div>
 
-                    <!-- LEAVE APPLY MODAL -->
                     <div class="mback" id="leaveModal" onclick="closeLeaveOutside(event)">
                         <div class="emodal">
                             <div class="ehead">
@@ -3071,7 +3019,6 @@
                         </div>
                     </div>
 
-                    <!-- ═══════ MARK ATTENDANCE SELECTION MODAL ═══════ -->
                     <div class="lback" id="markAttendanceModal" style="z-index: 9999;" onclick="if(event.target===this) window.closeMarkAttendanceModal()">
                         <div class="lbox" style="max-width:450px; background:var(--card); border-radius:20px; overflow:hidden;">
                             <div class="lt-head" style="padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
@@ -3108,7 +3055,7 @@
                                                 <option value="D">Section D</option>
                                             </select>
                                         </div>
-                                        <!-- Hidden Teacher ID from Session -->
+
                                         <input type="hidden" name="teacher_id" value="<%= tId %>">
                                     </div>
                                 </div>
@@ -3120,7 +3067,6 @@
                         </div>
                     </div>
 
-                    <!-- CREATE ASSIGNMENT MODAL -->
                     <div class="mback" id="assignmentModal" onclick="if(event.target===this) closeAssignmentModal()">
                         <div class="emodal">
                             <div class="ehead">
@@ -3188,14 +3134,12 @@
                         </div>
                     </div>
 
-
-
                     <script
                         src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
                     <script>
                         function openAssignmentModal() { document.getElementById('assignmentModal').classList.add('show'); document.body.style.overflow = 'hidden' }
                         function closeAssignmentModal() { document.getElementById('assignmentModal').classList.remove('show'); document.body.style.overflow = '' }
-                        
+
                         window.openMarkAttendanceModal = function() {
                             const el = document.getElementById('markAttendanceModal');
                             if(el) {
@@ -3217,12 +3161,10 @@
                             const targetPage = document.getElementById('page-' + pageId);
                             if (!targetPage) return;
 
-                            // Hide all pages
                             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-                            // Show target page
+
                             targetPage.classList.add('active');
 
-                            // Update sidebar links
                             document.querySelectorAll('.s-link').forEach(l => l.classList.remove('active'));
                             if (el) {
                                 el.classList.add('active');
@@ -3231,29 +3173,24 @@
                                 if (link) link.classList.add('active');
                             }
 
-                            // Update title
                             const titleEl = document.getElementById('page-title');
                             if (titleEl) titleEl.textContent = pageTitles[pageId] || pageId;
 
-                            // Mark notices as seen if page is notices
                             if (pageId === 'notices') {
                                 markNoticesAsSeen();
                             }
 
-                            // Close sidebar on mobile
                             const sidebar = document.getElementById('sidebar');
                             if (sidebar) sidebar.classList.remove('open');
 
-                            // Sync URL
                             const url = new URL(window.location.href);
                             let urlChanged = false;
-                            
+
                             if (url.searchParams.get('page') !== pageId) {
                                 url.searchParams.set('page', pageId);
                                 urlChanged = true;
                             }
 
-                            // Always clear transient parameters if they exist
                             if (url.searchParams.has('success') || url.searchParams.has('error')) {
                                 url.searchParams.delete('success');
                                 url.searchParams.delete('error');
@@ -3316,7 +3253,6 @@
                             }
                         }
 
-                        // Initial badge update
                         window.addEventListener('DOMContentLoaded', () => {
                             const badge = document.getElementById('sidebar-notif-count');
                             if (badge) {
@@ -3360,7 +3296,6 @@
                             reader.readAsDataURL(input.files[0]);
                         }
 
-                        // Centralized Event Listener for Sidebar
                         document.addEventListener('click', function(e) {
                             const link = e.target.closest('.s-link');
                             if (link && link.hasAttribute('data-page')) {
@@ -3371,14 +3306,12 @@
 
                         window.addEventListener('load', function() {
                             const urlParams = new URLSearchParams(window.location.search);
-                            
-                            // Browser Back/Forward Disable Logic
+
                             history.pushState(null, null, location.href);
                             window.onpopstate = function () {
                                 history.go(1);
                             };
-                            
-                            // Notifications
+
                             if (urlParams.has('success')) {
                                 const success = urlParams.get('success');
                                 if (success === 'assignment_created') alert('✅ Assignment create ho gaya!');
@@ -3386,19 +3319,17 @@
                                 else if (success === 'graded') alert('✅ Submission grade ho gayi!');
                                 else showToast('✅ Success!');
                             }
-                            
+
                             if (urlParams.has('error')) {
                                 alert('❌ Kuch error aa gaya. Phir se try karein.');
                             }
-                            
-                            // Initial Page Routing
+
                             const page = urlParams.get('page') || 'dashboard';
                             showPage(page);
 
                             if (typeof updateDynamicDates === 'function') updateDynamicDates();
                         });
 
-                        // Client-side validation for Assignment Form
                         function validateAssignmentForm() {
                             const title = document.querySelector('input[name="title"]').value;
                             if (!title || title.trim() === "") {

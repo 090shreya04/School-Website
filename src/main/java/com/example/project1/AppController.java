@@ -74,19 +74,19 @@ public class AppController {
             return "Error: Unauthorized";
         }
         try {
-            // Absolute path to python and script
+
             ProcessBuilder pb = new ProcessBuilder("python", "c:/project1/src/main/python/report_generator.py");
             pb.directory(new java.io.File("c:/project1"));
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            
+
             BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
             String line;
             StringBuilder output = new StringBuilder();
             while ((line = reader.readLine()) != null) {
                 output.append(line).append("\n");
             }
-            
+
             int exitCode = p.waitFor();
             if (exitCode == 0) {
                 return "Success\n" + output.toString();
@@ -109,7 +109,7 @@ public class AppController {
             @RequestParam("password") String password,
             @RequestParam("confirmpassword") String confirm_password,
             Model m) {
-        // Server-side validation: ensure passwords match
+
         if (!password.equals(confirm_password)) {
             m.addAttribute("error", "Password and Confirm Password do not match.");
             return "signup";
@@ -127,7 +127,6 @@ public class AppController {
         String encryptedPassword = encoder.encode(password);
         String encryptedConfirmPassword = encoder.encode(confirm_password);
 
-        // Use parameterized update to avoid SQL injection
         try {
             String sql = "INSERT INTO user(name, role, password, confirmpassword) VALUES(?, ?, ?, ?)";
             jdbc.update(sql, uname, role, encryptedPassword, encryptedConfirmPassword);
@@ -154,13 +153,11 @@ public class AppController {
 
         List<Map<String, Object>> users = jdbc.queryForList(sql, name);
 
-        // If user does not exist
         if (users.isEmpty()) {
             model.addAttribute("error", "Invalid name or password");
             return "signin";
         }
 
-        // Get stored data from DB
         Map<String, Object> user = users.get(0);
         Object userId = user.get("user_id");
         String dbPassword = user.get("password").toString();
@@ -168,16 +165,14 @@ public class AppController {
 
         BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-        // Compare raw password with encrypted password
         if (passwordEncoder.matches(password, dbPassword)) {
-            // Optional: Store user info in session
+
             HttpSession session = request.getSession();
             session.setAttribute("user_id", userId);
             session.setAttribute("role", role);
             session.setAttribute("userName", name);
             session.setAttribute("userRole", role);
 
-            // Redirect based on role
             if ("admin".equalsIgnoreCase(role)) {
                 return "redirect:/adashboard";
             } else if ("faculty".equalsIgnoreCase(role)) {
@@ -199,7 +194,7 @@ public class AppController {
             @RequestParam("password") String password,
             @RequestParam("confirm_password") String confirm_password,
             Model m) {
-        // Server-side validation: ensure passwords match
+
         if (!password.equals(confirm_password)) {
             m.addAttribute("error", "Password and Confirm Password do not match.");
             return "updatePassword";
@@ -226,7 +221,6 @@ public class AppController {
             return "redirect:/signin";
         }
 
-        // Get user_id before deletion
         List<Map<String, Object>> res = jdbc.queryForList("SELECT user_id FROM students WHERE student_id = ?", id);
         if (!res.isEmpty()) {
             Object userId = res.get(0).get("user_id");
@@ -431,14 +425,12 @@ public class AppController {
         for (Map<String, Object> fee : fees) {
             writer.print(fee.get("transaction_id") + ",");
             writer.print(fee.get("name") + ",");
-            
-            // Force Excel to treat roll_no as text so it doesn't convert to scientific notation
+
             writer.print("=\"" + fee.get("roll_no") + "\",");
-            
+
             writer.print(fee.get("class") + "-" + fee.get("section") + ",");
             writer.print(fee.get("amount") + ",");
-            
-            // Format Date
+
             Object dateObj = fee.get("payment_date");
             String dateStr = "";
             if (dateObj != null) {
@@ -449,7 +441,7 @@ public class AppController {
                 }
             }
             writer.print(dateStr + ",");
-            
+
             writer.println(fee.get("status"));
         }
         writer.flush();
@@ -490,7 +482,7 @@ public class AppController {
         writer.println("Status         : " + fee.get("status"));
         writer.println("=========================================");
         writer.println("Thank you!");
-        
+
         writer.flush();
         writer.close();
     }
@@ -518,7 +510,6 @@ public class AppController {
                     "INSERT INTO leave_applications (teacher_id, leave_type, from_date, to_date, days, reason, status, approved_by, applied_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())",
                     teacherId, leaveType.toLowerCase(), fromDate, toDate, days, reason, status, 0);
 
-            // If directly approved, update balance
             if ("approved".equalsIgnoreCase(status)) {
                 String balanceCol = "";
                 String type = leaveType.toLowerCase();
@@ -550,7 +541,7 @@ public class AppController {
         }
 
         try {
-            // Get leave details before approving
+
             List<Map<String, Object>> leaveData = jdbc.queryForList(
                     "SELECT teacher_id, leave_type, days FROM leave_applications WHERE leave_id = ?", leaveId);
             if (!leaveData.isEmpty()) {
@@ -559,10 +550,8 @@ public class AppController {
                 String type = (String) leave.get("leave_type");
                 Integer days = (Integer) leave.get("days");
 
-                // Update leave status
                 jdbc.update("UPDATE leave_applications SET status = 'approved' WHERE leave_id = ?", leaveId);
 
-                // Deduct from balance (Update used count)
                 String balanceCol = "";
                 if ("casual".equalsIgnoreCase(type))
                     balanceCol = "casual_used";
@@ -612,7 +601,7 @@ public class AppController {
         }
 
         try {
-            // Check if record exists
+
             List<Map<String, Object>> exists = jdbc.queryForList("SELECT lb_id FROM leave_balance WHERE teacher_id = ?",
                     teacherId);
             if (exists.isEmpty()) {
@@ -647,7 +636,7 @@ public class AppController {
         Object userId = session.getAttribute("user_id");
 
         try {
-            // Get teacher_id from user_id
+
             Integer teacherId = jdbc.queryForObject("SELECT teacher_id FROM teachers WHERE user_id = ?", Integer.class,
                     userId);
 
@@ -746,7 +735,6 @@ public class AppController {
                 String status = request.getParameter("status_" + sid);
                 if (status == null) status = "absent";
 
-                // Check if already marked for today to avoid duplicates
                 Integer exists = jdbc.queryForObject(
                         "SELECT COUNT(*) FROM attendance WHERE student_id = ? AND date = CURDATE()",
                         Integer.class, sid);
@@ -775,7 +763,7 @@ public class AppController {
             return "redirect:/tdashboard?page=attendance&success=attendance_marked";
         }
     }
-    
+
     @PostMapping(value = "/createAssignment", consumes = {"multipart/form-data"})
     public String createAssignment(
             @RequestParam("title") String title,
@@ -794,7 +782,7 @@ public class AppController {
         }
 
         try {
-            // Fallback for teacherId if missing
+
             if (teacherId == null || teacherId.isEmpty()) {
                 Object uid = session.getAttribute("user_id");
                 try {
@@ -802,7 +790,6 @@ public class AppController {
                 } catch (Exception e) {}
             }
 
-            // Detailed Validation (redundant but safe)
             if (title == null || title.isEmpty()) return "redirect:/tdashboard?page=assignments&error=missing_title";
             if (cls == null || cls.isEmpty()) return "redirect:/tdashboard?page=assignments&error=missing_class";
             if (sec == null || sec.isEmpty()) return "redirect:/tdashboard?page=assignments&error=missing_section";
@@ -810,21 +797,20 @@ public class AppController {
             if (teacherId == null || teacherId.isEmpty()) return "redirect:/tdashboard?page=assignments&error=missing_teacher";
 
             String finalDoc = (docLink != null) ? docLink : "";
-            
-            // Handle file upload
+
             if (file != null && !file.isEmpty()) {
                 String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
                 String baseDir = session.getServletContext().getRealPath("/");
                 if (baseDir == null) baseDir = System.getProperty("user.dir") + "/src/main/webapp/";
-                
+
                 String uploadPath = "uploads/assignments/";
                 java.io.File dir = new java.io.File(baseDir + uploadPath);
                 if (!dir.exists()) dir.mkdirs();
-                
+
                 file.transferTo(new java.io.File(baseDir + uploadPath + fileName));
                 finalDoc = uploadPath + fileName;
             }
-            
+
             jdbc.update("INSERT INTO assignments (teacher_id, title, description, class, section, subject, due_date, documents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())",
                     teacherId, title, description, cls, sec, subject, dueDate, finalDoc);
         } catch (Exception e) {
@@ -853,18 +839,18 @@ public class AppController {
                 String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
                 String baseDir = session.getServletContext().getRealPath("/");
                 if (baseDir == null) baseDir = System.getProperty("user.dir") + "/src/main/webapp/";
-                
+
                 String uploadPath = "uploads/submissions/";
                 java.io.File dir = new java.io.File(baseDir + uploadPath);
                 if (!dir.exists()) dir.mkdirs();
-                
+
                 file.transferTo(new java.io.File(baseDir + uploadPath + fileName));
                 filePath = uploadPath + fileName;
             }
 
             jdbc.update("INSERT INTO assignment_submissions (assignment_id, student_id, submission_text, submission_file, submitted_at, status, marks) VALUES (?, ?, ?, ?, NOW(), 'submitted', 0.0)",
                     assignmentId, studentId, subText, filePath);
-            
+
         } catch (Exception e) {
             e.printStackTrace();
             return "redirect:/sdashboard?page=assignments&error=1";
@@ -888,12 +874,12 @@ public class AppController {
         if (session == null || !"faculty".equalsIgnoreCase((String) session.getAttribute("role"))) {
             return "redirect:/signin";
         }
-        
+
         try {
             String title = jdbc.queryForObject("SELECT title FROM assignments WHERE assignment_id = ?", String.class, assignmentId);
             model.addAttribute("assignmentTitle", title);
             model.addAttribute("assignmentId", assignmentId);
-            
+
             String sql = "SELECT s.*, u.name as student_name FROM assignment_submissions s " +
                         "JOIN students st ON s.student_id = st.student_id " +
                         "JOIN user u ON st.user_id = u.user_id " +
@@ -904,7 +890,7 @@ public class AppController {
             e.printStackTrace();
             return "redirect:/tdashboard?page=assignments&error=load_failed";
         }
-        
+
         return "reviewSubmissions";
     }
 
@@ -913,15 +899,14 @@ public class AppController {
             @RequestParam("sub_id") int subId,
             @RequestParam("marks") Double marks,
             HttpSession session) {
-        
+
         if (session == null || !"faculty".equalsIgnoreCase((String) session.getAttribute("role"))) {
             return "redirect:/signin";
         }
 
         try {
             jdbc.update("UPDATE assignment_submissions SET marks = ?, status = 'graded' WHERE sub_id = ?", marks, subId);
-            
-            // Get assignment_id for redirect
+
             Integer asgnId = jdbc.queryForObject("SELECT assignment_id FROM assignment_submissions WHERE sub_id = ?", Integer.class, subId);
             return "redirect:/reviewSubmissions?assignment_id=" + asgnId + "&success=graded";
         } catch (Exception e) {
@@ -960,7 +945,7 @@ public class AppController {
             for (String sid : studentIds) {
                 String marksStr = request.getParameter("marks_" + sid);
                 if (marksStr == null || marksStr.isEmpty()) continue;
-                
+
                 Double marks = Double.parseDouble(marksStr);
 
                 Integer exists = jdbc.queryForObject(
@@ -1042,7 +1027,7 @@ public class AppController {
         Object userId = session.getAttribute("user_id");
 
         try {
-            // Get current encrypted password
+
             String dbPass = jdbc.queryForObject("SELECT password FROM user WHERE user_id = ?", String.class, userId);
             BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 

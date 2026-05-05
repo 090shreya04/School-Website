@@ -1435,7 +1435,7 @@
                   <p style="color: var(--muted); font-size: 14px; max-width: 400px; margin: 0 auto 24px;">Your Profile
                     is currently incomplete. Please, click on edit profile and fill all the details.</p>
                   <button class="profile-edit-btn"
-                    style="position: static; background: var(--accent); border: none; padding: 10px 24px;"
+                    style="position: static; background: var(--accent); border: none; padding: 10px 28px; margin: 0 auto; justify-content: center; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);"
                     onclick="openEditModal()">
                     <i class="bi bi-pencil-fill"></i> <span>Edit Profile Abhi</span>
                   </button>

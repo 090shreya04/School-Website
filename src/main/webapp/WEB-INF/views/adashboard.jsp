@@ -43,7 +43,6 @@
         if (conn != null) try { conn.close(); } catch(Exception e) {}
         }
 
-        // -- Student Stats --
         int totalStudents = 0, activeStudents = 0, inactiveStudents = 0, newStudentsThisMonth = 0;
         int totalTeachers = 0, activeTeachers = 0, onLeaveTeachers = 0, totalDepts = 0;
         int absentToday = 0, presentToday = 0, onLeaveToday = 0, workingDaysYear = 0;
@@ -58,7 +57,6 @@
         String monthName = java.time.LocalDate.now().getMonth().name().substring(0, 1).toUpperCase() +
         java.time.LocalDate.now().getMonth().name().substring(1).toLowerCase();
 
-        // -- Dashboard Dynamic Variables --
         int newNoticesCount = 0;
         double totalExpectedFees = 0;
         int feesCollectedCount = 0;
@@ -72,7 +70,6 @@
             }
             List<DashActivity> recentActivities = new ArrayList<>();
 
-                // -- System Settings --
                 String schoolName = "Delhi Public School", academicYear = "2025-2026", schoolCode = "DPS-001", board =
                 "CBSE", medium = "English", schoolAddress = "Sector 12, Dwarka, New Delhi - 110078", contactEmail =
                 "info@dps.edu.in";
@@ -123,40 +120,36 @@
                 ResultSet rsRFail = conn2.createStatement().executeQuery("SELECT COUNT(DISTINCT student_id) FROM results GROUP BY student_id HAVING AVG(marks_obtained * 100.0 / total_marks) < 33"); failedResults=0;
                   while(rsRFail.next()) failedResults++; ResultSet rsRExams=conn2.createStatement().executeQuery("SELECT COUNT(DISTINCT exam_type, exam_date) FROM results"); if(rsRExams.next())
                   examsCompleted=rsRExams.getInt(1); 
-// -- Notice Count -- 
+
 try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) FROM notices WHERE published_at>= DATE_SUB(NOW(), INTERVAL 7 DAY)");
                   if(rsNotices.next()) newNoticesCount = rsNotices.getInt(1);
                   } catch(Exception e) { e.printStackTrace(); }
 
-                  // -- Fee Progress --
                   try {
-                  // Collected this month
-                  ResultSet rsColCount = conn2.createStatement().executeQuery("SELECT COUNT(*) FROM fees WHERE status='paid' AND month='" + monthName + "' AND year=" + currentYear); if(rsColCount.next()) feesCollectedCount = rsColCount.getInt(1); /* Total Students (active) */ int totalActiveSt = 0; ResultSet rsTotalActive = conn2.createStatement().executeQuery("SELECT COUNT(*) FROM students s JOIN user u ON s.user_id = u.user_id WHERE u.is_active=1");
+
+                  ResultSet rsColCount = conn2.createStatement().executeQuery("SELECT COUNT(*) FROM fees WHERE status='paid' AND month='" + monthName + "' AND year=" + currentYear); if(rsColCount.next()) feesCollectedCount = rsColCount.getInt(1);  int totalActiveSt = 0; ResultSet rsTotalActive = conn2.createStatement().executeQuery("SELECT COUNT(*) FROM students s JOIN user u ON s.user_id = u.user_id WHERE u.is_active=1");
                   if(rsTotalActive.next()) totalActiveSt = rsTotalActive.getInt(1);
 
-                  // Pending Count = Total Active Students - Collected Count
                   feesPendingCount = totalActiveSt - feesCollectedCount;
                   if(feesPendingCount < 0) feesPendingCount=0; 
-/* Expected Fees based on active students and their class */
+
                   ResultSet rsFeeExp=conn2.createStatement().executeQuery("SELECT SUM(fs.monthly_fee) FROM students s JOIN user u ON s.user_id=u.user_id JOIN fee_structure fs ON TRIM(s.class)=TRIM(fs.class_name) WHERE u.is_active=1");
                   if(rsFeeExp.next()) totalExpectedFees=rsFeeExp.getDouble(1); } catch(Exception e) { e.printStackTrace(); } 
-                  
-                  // -- Class-wise Attendance (Robust) -- 
+
                   try { 
                     String attSql="SELECT s.class, (COUNT(CASE WHEN a.status='present' THEN 1 END) * 100.0 / COUNT(*)) as pct FROM attendance a JOIN students s ON a.student_id = s.student_id WHERE a.date = CURDATE() GROUP BY s.class"; 
                     ResultSet rsAttData=conn2.createStatement().executeQuery(attSql); 
                     while(rsAttData.next()) {
                       classAttendance.put(rsAttData.getString("class"), rsAttData.getDouble("pct")); 
                     } 
-                    // Ensure all classes show up even if 0% 
+
                     ResultSet rsAllCls=conn2.createStatement().executeQuery("SELECT DISTINCT class FROM students"); 
                     while(rsAllCls.next()) { 
                       String cls=rsAllCls.getString("class");
                       if(!classAttendance.containsKey(cls)) classAttendance.put(cls, 0.0); 
                     } 
                   } catch(Exception e) { e.printStackTrace(); } 
-                  
-                  // -- Recent Activity (Consolidated Top 2) -- 
+
                   try { 
                     String combinedSql="(SELECT 'student' as type, 'Naya student admit hua' as title, CONCAT(s.name, ' — Class ', s.class, '-', s.section) as subtitle, u.created_at as sort_time, DATE_FORMAT(u.created_at, '%d %b, %h:%i %p') as time_str, 'rgba(16, 185, 129, 0.1);color:#059669' as color, 'bi-person-plus-fill' as icon FROM students s JOIN user u ON s.user_id = u.user_id WHERE u.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) "
                     + "UNION ALL "
@@ -177,8 +170,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                     !adDesignation.trim().isEmpty()) && (adDept !=null && !adDept.trim().isEmpty()) && (adEmpId !=null
                     && !adEmpId.trim().isEmpty()) && (adQual !=null && !adQual.trim().isEmpty()) && (adExp !=null &&
                     !adExp.trim().isEmpty()); %>
-
-
 
                     <!DOCTYPE html>
 
@@ -207,29 +198,90 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                       <style>
                         .report-img-container {
                           background: #fff;
-                          border-radius: 16px;
-                          padding: 15px;
+                          border-radius: 20px;
+                          padding: 0;
                           border: 1px solid var(--border);
-                          transition: all 0.3s ease;
+                          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                          overflow: hidden;
+                          display: flex;
+                          flex-direction: column;
+                          height: 100%;
                         }
                         .report-img-container:hover {
-                          transform: translateY(-5px);
-                          box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+                          transform: translateY(-8px);
+                          box-shadow: 0 15px 30px rgba(0,0,0,0.08);
                           border-color: var(--accent);
                         }
+                        .report-card-body {
+                          padding: 15px;
+                          flex-grow: 1;
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          background: #fdfdfd;
+                        }
                         .report-img {
-                          width: 100%;
-                          height: auto;
+                          max-width: 100%;
+                          max-height: 250px;
+                          object-fit: contain;
                           border-radius: 8px;
+                          cursor: pointer;
+                        }
+                        .report-card-header {
+                          padding: 15px 20px;
+                          border-bottom: 1px solid var(--border);
+                          background: #fff;
                         }
                         .report-title {
                           font-weight: 700;
-                          font-size: 15px;
-                          margin-bottom: 12px;
+                          font-size: 16px;
                           color: var(--dark);
                           display: flex;
                           align-items: center;
+                          gap: 10px;
+                          margin: 0;
+                        }
+                        .report-card-footer {
+                          padding: 12px;
+                          background: #f8fafc;
+                          border-top: 1px solid var(--border);
+                          display: flex;
                           gap: 8px;
+                        }
+                        .btn-report-action {
+                          flex: 1;
+                          padding: 8px 4px;
+                          font-size: 11px;
+                          font-weight: 600;
+                          border-radius: 8px;
+                          border: 1.5px solid var(--border);
+                          background: #fff;
+                          color: var(--muted);
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          gap: 5px;
+                          transition: all 0.2s;
+                        }
+                        .btn-report-action:hover {
+                          background: var(--bg);
+                          color: var(--dark);
+                          border-color: var(--dark);
+                        }
+                        .btn-report-action.primary:hover {
+                          background: var(--accent);
+                          color: #fff;
+                          border-color: var(--accent);
+                        }
+                        #reportViewModal .modal-content {
+                          background: none;
+                          border: none;
+                          box-shadow: none;
+                        }
+                        #reportViewModal img {
+                          width: 100%;
+                          border-radius: 12px;
+                          box-shadow: 0 25px 50px rgba(0,0,0,0.3);
                         }
                         @keyframes spin {
                             from { transform: rotate(0deg); }
@@ -244,8 +296,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                     </head>
 
                     <body>
-
-                      <!-- ═══════ ADD TIMETABLE MODAL ═══════ -->
 
                       <div class="modal-backdrop-custom" id="addTimetableModal" style="z-index: 99999; display: none;"
                         onclick="if(event.target===this) closeAddTimetableModal()">
@@ -386,8 +436,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
 
                       </div>
 
-                      <!-- ═══════ EDIT WORKING DAYS MODAL ═══════ -->
-
                       <div class="modal-backdrop-custom" id="editWorkingDaysModal"
                         style="z-index: 99999; display: none;">
 
@@ -442,8 +490,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                         </div>
 
                       </div>
-
-                      <!-- ═══════ ADD PAYMENT MODAL ═══════ -->
 
                       <div class="modal-backdrop-custom" id="addPaymentModal" style="z-index: 99999; display: none;">
 
@@ -574,8 +620,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
 
                       </div>
 
-                      <!-- ═══════ PUBLISH NOTICE MODAL (TOP-LEVEL) ═══════ -->
-
                       <div class="modal-backdrop-custom" id="publishNoticeModal" style="z-index: 9999; display: none;"
                         onclick="if(event.target===this) window.closePublishNoticeModal()">
 
@@ -681,8 +725,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                         </div>
 
                       </div>
-
-                      <!-- ═══════ SIDEBAR ═══════ -->
 
                       <aside class="sidebar" id="sidebar">
 
@@ -889,8 +931,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
 
                       </aside>
 
-                      <!-- ═══════ MAIN ═══════ -->
-
                       <div class="main">
 
                         <div class="topbar">
@@ -928,8 +968,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
 
                         </div>
 
-                        <!-- ═══ DASHBOARD ═══ -->
-
                         <div class="page active" id="page-dashboard">
                           <div class="pg-header">
                             <div class="pg-header-left">
@@ -939,8 +977,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                             <div class="pg-header-right d-none d-md-flex align-items-center gap-3">
                             </div>
                           </div>
-
-                          <!-- Big stats -->
 
                           <div class="row g-4 mb-5">
                             <div class="col-12 col-sm-6 col-xl-3">
@@ -1008,8 +1044,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                               </div>
                             </div>
                           </div>
-
-                          <!-- Mini stats -->
 
                           <div class="row g-3 mb-4">
 
@@ -1104,7 +1138,7 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                           </div>
 
                           <div class="row g-3 mb-4">
-                            <!-- Attendance by class -->
+
                             <div class="col-12 col-lg-6">
                               <div class="card-box">
                                 <div class="card-head">
@@ -1138,7 +1172,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                               </div>
                             </div>
 
-                            <!-- Fee Collection Progress (Moved up) -->
                             <div class="col-12 col-lg-6">
                               <div class="card-box">
                                 <div class="card-head">
@@ -1170,7 +1203,7 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                           </div>
 
                           <div class="row g-3 mb-4">
-                            <!-- Recent Activity (Full Width) -->
+
                             <div class="col-12">
                               <div class="card-box">
                                 <div class="card-head d-flex justify-content-between align-items-center">
@@ -1202,7 +1235,7 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                           </div>
 
                           <div class="row g-3 mb-4">
-                            <!-- Top performers (Full Width) -->
+
                             <div class="col-12">
                               <div class="card-box">
                                 <div class="card-head">
@@ -1257,7 +1290,6 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                           </div>
                         </div>
 
-                        <!-- Recent Activity Page (Full) -->
                         <div id="page-activity" class="page" style="display:none;">
                           <div class="pg-header d-flex justify-content-between align-items-center mb-4">
                             <div>
@@ -1284,7 +1316,7 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                                   <% Connection connActFull=null; try { Class.forName("com.mysql.cj.jdbc.Driver");
                                     connActFull=DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root"
                                     , "" ); 
-// Get everything from last 30 days 
+
 String
                                     fullActSql="(SELECT 'Student Admission' as type, s.name as title, CONCAT('Class ', s.class, '-', s.section) as subtitle, u.created_at as sort_time, DATE_FORMAT(u.created_at, '%d %b %Y, %h:%i %p') as time_str, 'success' as color_tag FROM students s JOIN user u ON s.user_id = u.user_id) "
                                     + "UNION ALL "
@@ -1336,8 +1368,6 @@ String
                             </div>
                           </div>
                         </div>
-
-                        <!-- ═══ PROFILE ═══ -->
 
                         <div class="page" id="page-profile">
 
@@ -1571,15 +1601,7 @@ String
                                       </div>
                                       <% } %>
                           </div>
-                        </div> <!-- End of Page Profile -->
-
-
-
-
-
-
-
-                        <!-- ═══ STUDENTS ═══ -->
+                        </div> 
 
                         <div class="page" id="page-students">
 
@@ -1606,8 +1628,6 @@ String
                             </div>
 
                           </div>
-
-                          <!-- Stats row -->
 
                           <div class="row g-3 mb-3">
 
@@ -1896,8 +1916,6 @@ String
 
                                       </tr>
 
-
-
                                       <tr id="noStudentRow" <%=(idx> 0) ? "hidden" : ""%>>
 
                                         <td colspan="7" style="text-align:center;padding:40px 20px;">
@@ -1930,9 +1948,7 @@ String
 
                             </div>
 
-                        </div> <!-- End of Page Students -->
-
-                        <!-- ═══ TEACHERS ═══ -->
+                        </div> 
 
                         <div class="page" id="page-teachers">
 
@@ -2117,7 +2133,7 @@ String
                                     sbInit.toString().toUpperCase(); if(initials.isEmpty()) initials = "??"; String
                                     rowBg = colors[idx % colors.length]; String rowTc = textColors[idx %
                                     textColors.length]; String avatarHtml = "<div class=\"av-sm\" style=\"background-color:" + rowBg + ";color:" + rowTc + "\">" + initials + "</div>"; idx++;
-                                    // JS Escaping
+
                                     String jsTid = tid.replace("'", "\\'");
                                     String jsTname = tname.replace("'", "\\'").replace("\"", "&quot;");
                                     String jsTemail = temail.replace("'", "\\'").replace("\"", "&quot;");
@@ -2243,8 +2259,6 @@ String
 
                         </div>
 
-                        <!-- ═══ ATTENDANCE ═══ -->
-
                         <div class="page" id="page-attendance">
 
                           <div class="pg-header">
@@ -2350,8 +2364,6 @@ String
                                     }
                                   </style>
                                   <% } %>
-
-
 
                               </div>
 
@@ -2579,7 +2591,6 @@ String
                                         </tr>
                                         <% } %>
 
-
                                   </tbody>
 
                                 </table>
@@ -2597,8 +2608,6 @@ String
                           <div class="pg-header">
 
                             <div class="pg-header-left">
-
-
 
                               <p>Exam results manage karo aur marksheets generate karo</p>
 
@@ -2826,15 +2835,11 @@ String
 
                         </div>
 
-                        <!-- ═══ TIMETABLE ═══ -->
-
                         <div class="page" id="page-timetable">
 
                           <div class="pg-header">
 
                             <div class="pg-header-left">
-
-
 
                               <p>Classes aur sections ke liye timetable manage karein</p>
 
@@ -3008,16 +3013,11 @@ String
 
                         </div>
 
-                        <!-- ═══ FEES ═══ -->
-                        <!-- ═══ FEES ═══ -->
-
                         <div class="page" id="page-fees">
 
                           <div class="pg-header">
 
                             <div class="pg-header-left">
-
-
 
                               <p>Collections, pending aur transactions manage karo</p>
 
@@ -3051,18 +3051,17 @@ String
                             paySql="SELECT COUNT(*) FROM fees WHERE status='Paid' AND MONTH(payment_date) = MONTH(CURRENT_DATE()) AND YEAR(payment_date) = YEAR(CURRENT_DATE())"
                             ; ResultSet rsPay=connFees.createStatement().executeQuery(paySql); if(rsPay.next())
                             paymentsDoneThisMonth=rsPay.getInt(1); 
-                            
+
                             pendingStudentsCount = 0;
                             pendingTotal = 0;
-                            
-                            // Better logic: Find each student who hasn't paid full monthly fee
+
                             String pendSql = "SELECT s.student_id, fs.monthly_fee, " +
                                             " (SELECT SUM(amount) FROM fees f WHERE f.student_id = s.student_id " +
                                             "  AND MONTH(f.payment_date) = MONTH(CURRENT_DATE()) " +
                                             "  AND YEAR(f.payment_date) = YEAR(CURRENT_DATE())) as paid_this_month " +
                                             " FROM students s " +
                                             " JOIN fee_structure fs ON s.class = fs.class_name";
-                            
+
                             ResultSet rsPend = connFees.createStatement().executeQuery(pendSql);
                             while(rsPend.next()) {
                                 double monthly = rsPend.getDouble("monthly_fee");
@@ -3307,15 +3306,11 @@ String
 
                         </div>
 
-                        <!-- ═══ NOTICE BOARD ═══ -->
-
                         <div class="page" id="page-notices">
 
                           <div class="pg-header">
 
                             <div class="pg-header-left">
-
-
 
                               <p>Latest updates aur announcements publish karein</p>
 
@@ -3442,275 +3437,109 @@ String
 
                                       </tr>
 
-                                      <% } } catch(Exception e){ e.printStackTrace(); } finally { if(connN!=null)
-                                        try{connN.close();}catch(Exception e){} } %>
-
-                                </tbody>
-
-                              </table>
-
-                            </div>
-
-                          </div>
-
-                        </div>
-
-                        <!-- ═══ REPORTS ═══ -->
+                                       <% } } catch(Exception e){ e.printStackTrace(); } finally { if(connN!=null) try{connN.close();}catch(Exception e){} } %>
+                                 </tbody>
+                               </table>
+                             </div>
+                           </div>
+                         </div>
 
                         <div class="page" id="page-reports">
                           <div class="pg-header">
                             <div class="pg-header-left">
-                              <p>School performance aur dynamic Python data analytics dekho</p>
+                              <p>Select a report to analyze and manage dynamic analytics data</p>
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn-accent" id="btn-refresh-reports" onclick="refreshReports()">
-                                    <i class="bi bi-arrow-repeat"></i> Latest Data Fetch Karo
+                                <button class="btn-accent" id="btn-refresh-reports-top" onclick="refreshReports()">
+                                    <i class="bi bi-arrow-repeat"></i> Sync All Data
                                 </button>
-                                <button class="btn-outline"><i class="bi bi-download"></i> All Reports Export</button>
                             </div>
                           </div>
 
                           <div class="row g-4">
+
                             <div class="col-md-6">
                               <div class="report-img-container">
-                                <div class="report-title"><i class="bi bi-people-fill" style="color:#ea580c"></i> Enrollment Trends</div>
-                                <img src="/images/reports/enrollment_trend.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                <div class="report-card-header">
+                                    <div class="report-title"><i class="bi bi-people-fill" style="color:#ea580c"></i> Enrollment Trends</div>
+                                </div>
+                                <div class="report-card-body">
+                                    <img src="/images/reports/enrollment_trend.png" class="report-img" onclick="viewFullReport(this.src)" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                </div>
+                                <div class="report-card-footer">
+                                    <button class="btn-report-action" onclick="refreshReports()"><i class="bi bi-arrow-repeat"></i> Fetch</button>
+                                    <button class="btn-report-action" onclick="viewFullReport('/images/reports/enrollment_trend.png')"><i class="bi bi-eye"></i> View</button>
+                                    <button class="btn-report-action primary" onclick="exportImage('/images/reports/enrollment_trend.png', 'enrollment_report.png')"><i class="bi bi-download"></i> Export</button>
+                                </div>
                               </div>
                             </div>
+
                             <div class="col-md-6">
                               <div class="report-img-container">
-                                <div class="report-title"><i class="bi bi-calendar-check-fill" style="color:#059669"></i> Attendance by Class</div>
-                                <img src="/images/reports/attendance_by_class.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                <div class="report-card-header">
+                                    <div class="report-title"><i class="bi bi-calendar-check-fill" style="color:#059669"></i> Attendance Analysis</div>
+                                </div>
+                                <div class="report-card-body">
+                                    <img src="/images/reports/attendance_by_class.png" class="report-img" onclick="viewFullReport(this.src)" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                </div>
+                                <div class="report-card-footer">
+                                    <button class="btn-report-action" onclick="refreshReports()"><i class="bi bi-arrow-repeat"></i> Fetch</button>
+                                    <button class="btn-report-action" onclick="viewFullReport('/images/reports/attendance_by_class.png')"><i class="bi bi-eye"></i> View</button>
+                                    <button class="btn-report-action primary" onclick="exportImage('/images/reports/attendance_by_class.png', 'attendance_report.png')"><i class="bi bi-download"></i> Export</button>
+                                </div>
                               </div>
                             </div>
+
                             <div class="col-md-6">
                               <div class="report-img-container">
-                                <div class="report-title"><i class="bi bi-cash-stack" style="color:#d97706"></i> Fee Collection Status</div>
-                                <img src="/images/reports/fee_distribution.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                <div class="report-card-header">
+                                    <div class="report-title"><i class="bi bi-cash-stack" style="color:#d97706"></i> Fee Collection Status</div>
+                                </div>
+                                <div class="report-card-body">
+                                    <img src="/images/reports/fee_distribution.png" class="report-img" onclick="viewFullReport(this.src)" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                </div>
+                                <div class="report-card-footer">
+                                    <button class="btn-report-action" onclick="refreshReports()"><i class="bi bi-arrow-repeat"></i> Fetch</button>
+                                    <button class="btn-report-action" onclick="viewFullReport('/images/reports/fee_distribution.png')"><i class="bi bi-eye"></i> View</button>
+                                    <button class="btn-report-action primary" onclick="exportImage('/images/reports/fee_distribution.png', 'fee_report.png')"><i class="bi bi-download"></i> Export</button>
+                                </div>
                               </div>
                             </div>
+
                             <div class="col-md-6">
                               <div class="report-img-container">
-                                <div class="report-title"><i class="bi bi-bar-chart-fill" style="color:#7c3aed"></i> Academic Performance</div>
-                                <img src="/images/reports/academic_performance.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                <div class="report-card-header">
+                                    <div class="report-title"><i class="bi bi-bar-chart-fill" style="color:#7c3aed"></i> Academic Performance</div>
+                                </div>
+                                <div class="report-card-body">
+                                    <img src="/images/reports/academic_performance.png" class="report-img" onclick="viewFullReport(this.src)" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                                </div>
+                                <div class="report-card-footer">
+                                    <button class="btn-report-action" onclick="refreshReports()"><i class="bi bi-arrow-repeat"></i> Fetch</button>
+                                    <button class="btn-report-action" onclick="viewFullReport('/images/reports/academic_performance.png')"><i class="bi bi-eye"></i> View</button>
+                                    <button class="btn-report-action primary" onclick="exportImage('/images/reports/academic_performance.png', 'academic_report.png')"><i class="bi bi-download"></i> Export</button>
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                        <div style="display:none">
 
-                          <div class="pg-header">
-
-                            <div class="pg-header-left">
-
-
-
-                              <p>School performance aur dynamic Python data analytics dekho</p>
-
+                        <div class="modal fade" id="reportViewModal" tabindex="-1" aria-hidden="true">
+                          <div class="modal-dialog modal-lg modal-dialog-centered">
+                            <div class="modal-content">
+                              <div class="modal-body p-0 position-relative">
+                                <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" data-bs-dismiss="modal" aria-label="Close"></button>
+                                <img id="fullReportImg" src="" />
+                              </div>
                             </div>
-
-                            <div class="d-flex gap-2">
-                                <button class="btn-accent" id="btn-refresh-reports" onclick="refreshReports()">
-                                    <i class="bi bi-arrow-repeat"></i> Latest Data Fetch Karo
-                                </button>
-                                <button class="btn-outline"><i class="bi bi-download"></i> All Reports Export</button>
-                            </div>
-
                           </div>
-
-                          <div class="row g-3">
-
-                            <div class="col-md-4">
-
-                              <div class="card-box p-4 report-card">
-
-                                <div class="stat-ico" style="background:#ffedd5;color:#ea580c;margin-bottom:14px;"><i
-                                    class="bi bi-people-fill"></i></div>
-
-                                <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Student Enrollment Report
-                                </div>
-
-                                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Class-wise enrollment
-                                  aur
-
-                                  growth
-
-                                  data
-
-                                </div>
-
-                                <button class="btn-accent" style="padding:7px 16px;font-size:12px;"><i
-                                    class="bi bi-download"></i>
-
-                                  Download
-
-                                  PDF</button>
-
-                              </div>
-
-                            </div>
-
-                            <div class="col-md-4">
-
-                              <div class="card-box p-4 report-card">
-
-                                <div class="stat-ico" style="background:#d1fae5;color:#059669;margin-bottom:14px;"><i
-                                    class="bi bi-calendar-check-fill"></i></div>
-
-                                <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Attendance Report</div>
-
-                                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Monthly aur annual
-
-                                  attendance
-
-                                  analysis
-
-                                </div>
-
-                                <button class="btn-accent" style="padding:7px 16px;font-size:12px;"><i
-                                    class="bi bi-download"></i>
-
-                                  Download
-
-                                  PDF</button>
-
-                              </div>
-
-                            </div>
-
-                            <div class="col-md-4">
-
-                              <div class="card-box p-4 report-card">
-
-                                <div class="stat-ico" style="background:#fef3c7;color:#d97706;margin-bottom:14px;"><i
-                                    class="bi bi-cash-coin"></i></div>
-
-                                <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Fee Collection Report
-                                </div>
-
-                                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Monthly fee
-                                  collection aur
-
-                                  pending
-
-                                  analysis</div>
-
-                                <button class="btn-accent" style="padding:7px 16px;font-size:12px;"><i
-                                    class="bi bi-download"></i>
-
-                                  Download
-
-                                  PDF</button>
-
-                              </div>
-
-                            </div>
-
-                            <div class="col-md-4">
-
-                              <div class="card-box p-4" style="cursor:pointer;transition:all .2s;"
-                                onmouseover="this.style.borderColor='var(--accent)'"
-                                onmouseout="this.style.borderColor='var(--border)'">
-
-                                <div class="stat-ico" style="background:#ede9fe;color:#7c3aed;margin-bottom:14px;"><i
-                                    class="bi bi-bar-chart-fill"></i></div>
-
-                                <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Academic Performance
-                                </div>
-
-                                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Exam results aur
-                                  class
-
-                                  average
-
-                                  summary
-
-                                </div>
-
-                                <button class="btn-accent" style="padding:7px 16px;font-size:12px;"><i
-                                    class="bi bi-download"></i>
-
-                                  Download
-
-                                  PDF</button>
-
-                              </div>
-
-                            </div>
-
-                            <div class="col-md-4">
-
-                              <div class="card-box p-4" style="cursor:pointer;transition:all .2s;"
-                                onmouseover="this.style.borderColor='var(--accent)'"
-                                onmouseout="this.style.borderColor='var(--border)'">
-
-                                <div class="stat-ico" style="background:#dbeafe;color:#2563eb;margin-bottom:14px;"><i
-                                    class="bi bi-person-video3"></i></div>
-
-                                <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Teacher Performance</div>
-
-                                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Staff attendance aur
-                                  class
-
-                                  performance
-
-                                  data</div>
-
-                                <button class="btn-accent" style="padding:7px 16px;font-size:12px;"><i
-                                    class="bi bi-download"></i>
-
-                                  Download
-
-                                  PDF</button>
-
-                              </div>
-
-                            </div>
-
-                            <div class="col-md-4">
-
-                              <div class="card-box p-4" style="cursor:pointer;transition:all .2s;"
-                                onmouseover="this.style.borderColor='var(--accent)'"
-                                onmouseout="this.style.borderColor='var(--border)'">
-
-                                <div class="stat-ico" style="background:#fee2e2;color:#dc2626;margin-bottom:14px;"><i
-                                    class="bi bi-exclamation-triangle-fill"></i></div>
-
-                                <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Defaulters Report</div>
-
-                                <div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Low attendance aur
-                                  pending
-
-                                  fee
-
-                                  wale
-
-                                  students</div>
-
-                                <button class="btn-accent" style="padding:7px 16px;font-size:12px;"><i
-                                    class="bi bi-download"></i>
-
-                                  Download
-
-                                  PDF</button>
-
-                              </div>
-
-                            </div>
-
-                          </div>
-
                         </div>
-
-                        <!-- ═══ SETTINGS ═══ -->
 
                         <div class="page" id="page-settings">
 
                           <div class="pg-header">
 
                             <div class="pg-header-left">
-
-
 
                               <p>School aur system ki configurations</p>
 
@@ -3962,16 +3791,11 @@ String
 
                         </div>
 
-                        <!-- ═══ LEAVE MANAGEMENT ═══ -->
-                        <!-- ═══ LEAVE MANAGEMENT ═══ -->
-
                         <div class="page" id="page-leavemgmt">
 
                           <div class="pg-header">
 
                             <div class="pg-header-left">
-
-
 
                               <p>Teachers ko leave assign karo aur applications manage karo</p>
 
@@ -4082,8 +3906,6 @@ String
                             </div>
 
                             <div class="row g-3">
-
-                              <!-- Pending Requests -->
 
                               <div class="col-12">
 
@@ -4259,8 +4081,6 @@ String
 
                                     </tr>
 
-
-
                                     </tbody>
 
                                     </table>
@@ -4275,7 +4095,6 @@ String
                               connL.close(); } catch(Exception e) {} } %>
 
                               <div class="row g-3">
-                                <!-- Teacher Leave Balance -->
 
                                 <div class="col-12 col-lg-7">
 
@@ -4401,8 +4220,6 @@ String
 
                                 </div>
 
-                                <!-- Leave History -->
-
                                 <div class="col-12 col-lg-5">
 
                                   <div class="card-box">
@@ -4468,8 +4285,6 @@ String
                                   </div>
 
                                 </div>
-
-                                <!-- On Leave Today -->
 
                                 <div class="col-12">
 
@@ -4577,8 +4392,6 @@ String
                       </div>
 
                       </div>
-
-                      <!-- ASSIGN LEAVE MODAL -->
 
                       <div class="modal-backdrop-custom" id="assignLeaveModal" style="display:none;"
                         onclick="closeAssignLeaveOutside(event)">
@@ -4747,8 +4560,6 @@ String
 
                       </div>
 
-                      <!-- ASSIGN LEAVE BALANCE MODAL -->
-
                       <div class="modal-backdrop-custom" id="assignBalanceModal" style="display:none;"
                         onclick="closeAssignBalanceOutside(event)">
 
@@ -4825,8 +4636,6 @@ String
 
                       </div>
 
-                      <!-- EDIT LEAVE BALANCE MODAL -->
-
                       <div class="modal-backdrop-custom" id="editLeaveModal" style="display:none;"
                         onclick="closeEditLeaveOutside(event)">
 
@@ -4888,8 +4697,6 @@ String
 
                       </div>
 
-                      <!-- ═══ ADD STUDENT MODAL ═══ -->
-
                       <div class="modal-backdrop-custom" id="addStudentModal" style="display:none;"
                         onclick="closeAddStudentOutside(event)">
 
@@ -4946,8 +4753,6 @@ String
                         </div>
 
                       </div>
-
-                      <!-- ═══ PROFILE EDIT MODAL ═══ -->
 
                       <div class="modal-backdrop-custom" id="editModal" style="display:none;"
                         onclick="closeEditModalOutside(event)">
@@ -5093,12 +4898,6 @@ String
                         src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
 
                       <script>
-
-                        // --- GLOBAL SCOPE INITIALIZATION ---
-
-                        // All interactive controller functions are explicitly attached to 'window' 
-
-                        // to bypass potential scope isolation issues in fragmented script blocks.
 
                         window.openPublishNoticeModal = function (e, studentId, studentName) {
 
@@ -5306,7 +5105,6 @@ String
                             if (sidebar) sidebar.classList.remove('open');
                             localStorage.setItem('activeAdminPage', name);
 
-                            // Close all active modals on page switch
                             document.querySelectorAll('.modal-backdrop-custom').forEach(m => {
                               m.style.display = 'none';
                               m.classList.remove('show');
@@ -5378,8 +5176,6 @@ String
                           }
 
                         };
-
-                        // ─── LEAVE MANAGEMENT FUNCTIONS ───
 
                         window.openAssignLeaveModal = function () {
 
@@ -5602,8 +5398,6 @@ String
 
                         };
 
-                        // --- STUDENT MANAGEMENT FUNCTIONS ---
-
                         window.openAddStudentModal = function () {
 
                           console.log('Opening Add Student Modal...');
@@ -5713,8 +5507,6 @@ String
                           if (!el) return;
 
                           const originalText = el.innerText;
-
-                          // Escape regex to prevent crashes
 
                           const escapedQuery = query.replace(/[.*+?^\x24\x7B\x7D()|[\]\\]/g, '$&');
 
@@ -5890,7 +5682,6 @@ String
 
                           console.log('Opening Edit Teacher Modal for ID:', id);
 
-                          // Close any open student modal first to prevent overlap
                           var sModal = document.getElementById('editStudentModal');
                           if (sModal) { sModal.classList.remove('show'); sModal.style.display = 'none'; }
 
@@ -5983,7 +5774,7 @@ String
                             const att = row.getAttribute('data-att') || '';
                             const fees = row.getAttribute('data-fees') || '';
                             const status = row.getAttribute('data-status') || '';
-                            // Prepend \t to force Excel to treat roll as text
+
                             csv.push('"' + serial + '","' + name + '","' + email + '","\t' + roll + '","' + cls + '","' + att + '","' + fees + '","' + status + '"');
                             serial++;
                           });
@@ -6024,7 +5815,6 @@ String
 
                           console.log('Opening Edit Student Modal for ID:', id);
 
-                          // Close any open teacher modal first to prevent overlap
                           var tModal = document.getElementById('editTeacherModal');
                           if (tModal) { tModal.classList.remove('show'); tModal.style.display = 'none'; }
 
@@ -6142,10 +5932,8 @@ String
 
                         };
 
-                        // --- EVENT LISTENERS ---
-
                         window.addEventListener('load', function () {
-                          // Browser Back/Forward Disable Logic
+
                           history.pushState(null, null, location.href);
                           window.onpopstate = function () {
                             history.go(1);
@@ -6205,13 +5993,11 @@ String
                           if (page && isAction) {
                             window.showPage(page);
                           } else {
-                            // Default to dashboard on first login/load unless it's a redirect from an action
+
                             window.showPage('dashboard');
                           }
 
                         });
-
-                        // Close modals when clicking outside
 
                         window.addEventListener('click', function (e) {
 
@@ -6260,8 +6046,6 @@ String
                         });
 
                       </script>
-
-                      <!-- ═══ EDIT STUDENT MODAL ═══ -->
 
                       <div class="modal-backdrop-custom" id="editStudentModal" style="display:none;"
                         onclick="if(event.target===this) window.closeEditStudentModal()">
@@ -6345,8 +6129,6 @@ String
                         </div>
 
                       </div>
-
-                      <!-- ═══════ ADD TEACHER MODAL ═══════ -->
 
                       <div class="modal-backdrop-custom" id="addTeacherModal" style="display:none;"
                         onclick="if(event.target===this) window.closeAddTeacherModal()">
@@ -6451,8 +6233,6 @@ String
                         </div>
 
                       </div>
-
-                      <!-- ═══════ EDIT TEACHER MODAL ═══════ -->
 
                       <div class="modal-backdrop-custom" id="editTeacherModal" style="display:none;"
                         onclick="if(event.target===this) window.closeEditTeacherModal()">
@@ -6564,8 +6344,6 @@ String
 
                       </div>
 
-                      <!-- ═══════ DELETE TEACHER MODAL ═══════ -->
-
                       <div class="modal-backdrop-custom" id="deleteTeacherModal" style="display:none;"
                         onclick="if(event.target===this) window.closeDeleteTeacherModal()">
 
@@ -6602,9 +6380,6 @@ String
                           </form>
 
                         </div>
-
-
-                        <!-- ═══════ DELETE NOTICE MODAL ═══════ -->
 
                         <div class="modal-backdrop-custom" id="deleteNoticeModal" style="display:none;"
                           onclick="if(event.target===this) closeDeleteNoticeModal()">
@@ -6650,8 +6425,6 @@ String
                           </div>
 
                         </div>
-
-                        <!-- ═══════ MARK ATTENDANCE SELECTION MODAL ═══════ -->
 
                         <div class="modal-backdrop-custom" id="markAttendanceModal"
                           style="z-index: 9999; display: none;"
@@ -6781,16 +6554,17 @@ String
                         <script>
 
                           async function refreshReports() {
-                              const btn = document.getElementById('btn-refresh-reports');
-                              const originalText = btn.innerHTML;
-                              btn.disabled = true;
-                              btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Generating...';
-                              
+                              const btn = document.getElementById('btn-refresh-reports-top');
+                              const originalText = btn ? btn.innerHTML : '<i class="bi bi-arrow-repeat"></i> Sync';
+                              if(btn) {
+                                  btn.disabled = true;
+                                  btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Syncing...';
+                              }
+
                               try {
                                   const response = await fetch('/generateReports');
                                   const text = await response.text();
                                   if (text.trim().startsWith('Success')) {
-                                      // Reload all report images by adding a timestamp to bypass cache
                                       const timestamp = new Date().getTime();
                                       document.querySelectorAll('.report-img').forEach(img => {
                                           const currentSrc = img.src.split('?')[0];
@@ -6802,11 +6576,28 @@ String
                                   }
                               } catch (error) {
                                   console.error('Error refreshing reports:', error);
-                                  alert('Connection error. Please check if server is running.');
                               } finally {
-                                  btn.disabled = false;
-                                  btn.innerHTML = originalText;
+                                  if(btn) {
+                                      btn.disabled = false;
+                                      btn.innerHTML = originalText;
+                                  }
                               }
+                          }
+
+                          function viewFullReport(src) {
+                              const modalImg = document.getElementById('fullReportImg');
+                              modalImg.src = src;
+                              const modal = new bootstrap.Modal(document.getElementById('reportViewModal'));
+                              modal.show();
+                          }
+
+                          function exportImage(src, filename) {
+                              const link = document.createElement('a');
+                              link.href = src;
+                              link.download = filename;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
                           }
 
                           function filterFeeTable() {
@@ -6832,7 +6623,6 @@ String
                           }
 
                         </script>
-
 
                       </div>
 
