@@ -23,8 +23,8 @@ def generate_enrollment_report(conn):
     df = pd.read_sql(query, conn)
 
     plt.figure(figsize=(10, 6))
-    plt.plot(df['month'], df['count'], marker='o', color='
-    plt.fill_between(df['month'], df['count'], color='
+    plt.plot(df['month'], df['count'], marker='o', color='#2e7d32')
+    plt.fill_between(df['month'], df['count'], color='#e8f5e9')
     plt.title('Student Enrollment Trends', fontsize=14, fontweight='bold', pad=20)
     plt.xlabel('Month', fontsize=12)
     plt.ylabel('New Admissions', fontsize=12)
@@ -43,7 +43,7 @@ def generate_attendance_report(conn):
     df = pd.read_sql(query, conn)
 
     plt.figure(figsize=(10, 6))
-    colors = ['
+    colors = ['#4fc3f7', '#ffb74d', '#81c784', '#e57373', '#ba68c8']
     plt.bar(df['class'], df['percentage'], color=colors[:len(df)])
     plt.title('Average Attendance by Class', fontsize=14, fontweight='bold', pad=20)
     plt.xlabel('Class', fontsize=12)
@@ -76,7 +76,7 @@ def generate_fee_report(conn):
     plt.figure(figsize=(8, 8))
     labels = ['Paid (This Month)', 'Pending']
     sizes = [total_paid, total_pending]
-    colors = ['
+    colors = ['#66bb6a', '#ef5350']
 
     if total_paid + total_pending > 0:
         plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, colors=colors, explode=(0.1, 0))
@@ -93,7 +93,7 @@ def generate_performance_report(conn):
     df = pd.read_sql(query, conn)
 
     plt.figure(figsize=(10, 6))
-    plt.barh(df['class'], df['avg_score'], color='
+    plt.barh(df['class'], df['avg_score'], color='#5c6bc0')
     plt.title('Academic Performance by Class', fontsize=14, fontweight='bold', pad=20)
     plt.xlabel('Average Score (%)', fontsize=12)
     plt.ylabel('Class', fontsize=12)
