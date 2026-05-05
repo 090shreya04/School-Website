@@ -204,6 +204,42 @@ try { ResultSet rsNotices=conn2.createStatement().executeQuery("SELECT COUNT(*) 
                         rel="stylesheet" />
 
                       <link rel="stylesheet" href="/css/adashboard.css" />
+                      <style>
+                        .report-img-container {
+                          background: #fff;
+                          border-radius: 16px;
+                          padding: 15px;
+                          border: 1px solid var(--border);
+                          transition: all 0.3s ease;
+                        }
+                        .report-img-container:hover {
+                          transform: translateY(-5px);
+                          box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+                          border-color: var(--accent);
+                        }
+                        .report-img {
+                          width: 100%;
+                          height: auto;
+                          border-radius: 8px;
+                        }
+                        .report-title {
+                          font-weight: 700;
+                          font-size: 15px;
+                          margin-bottom: 12px;
+                          color: var(--dark);
+                          display: flex;
+                          align-items: center;
+                          gap: 8px;
+                        }
+                        @keyframes spin {
+                            from { transform: rotate(0deg); }
+                            to { transform: rotate(360deg); }
+                        }
+                        .spin {
+                            display: inline-block;
+                            animation: spin 1s linear infinite;
+                        }
+                      </style>
 
                     </head>
 
@@ -3015,13 +3051,28 @@ String
                             paySql="SELECT COUNT(*) FROM fees WHERE status='Paid' AND MONTH(payment_date) = MONTH(CURRENT_DATE()) AND YEAR(payment_date) = YEAR(CURRENT_DATE())"
                             ; ResultSet rsPay=connFees.createStatement().executeQuery(paySql); if(rsPay.next())
                             paymentsDoneThisMonth=rsPay.getInt(1); 
-/* Automatic Pending Calculation */ int totalStCount=0;
-                            ResultSet rsSt=connFees.createStatement().executeQuery("SELECT COUNT(*) FROM students");
-                            if(rsSt.next()) totalStCount=rsSt.getInt(1); pendingStudentsCount=totalStCount -
-                            paymentsDoneThisMonth; double totalMonthlyExp=0; ResultSet
-                            rsExp=connFees.createStatement().executeQuery("SELECT SUM(fs.monthly_fee) FROM students s JOIN fee_structure fs ON s.class=fs.class_name"); if(rsExp.next())
-                            totalMonthlyExp=rsExp.getDouble(1); pendingTotal=totalMonthlyExp - collectedThisMonth;
-                            if(pendingTotal < 0) pendingTotal=0; } catch(Exception e) { e.printStackTrace(); } finally {
+                            
+                            pendingStudentsCount = 0;
+                            pendingTotal = 0;
+                            
+                            // Better logic: Find each student who hasn't paid full monthly fee
+                            String pendSql = "SELECT s.student_id, fs.monthly_fee, " +
+                                            " (SELECT SUM(amount) FROM fees f WHERE f.student_id = s.student_id " +
+                                            "  AND MONTH(f.payment_date) = MONTH(CURRENT_DATE()) " +
+                                            "  AND YEAR(f.payment_date) = YEAR(CURRENT_DATE())) as paid_this_month " +
+                                            " FROM students s " +
+                                            " JOIN fee_structure fs ON s.class = fs.class_name";
+                            
+                            ResultSet rsPend = connFees.createStatement().executeQuery(pendSql);
+                            while(rsPend.next()) {
+                                double monthly = rsPend.getDouble("monthly_fee");
+                                double paid = rsPend.getDouble("paid_this_month");
+                                if(paid < monthly) {
+                                    pendingStudentsCount++;
+                                    pendingTotal += (monthly - paid);
+                                }
+                            }
+                            } catch(Exception e) { e.printStackTrace(); } finally {
                             if(connFees!=null) try{connFees.close();}catch(Exception e){} } String
                             fmtCollected=collectedThisMonth>= 100000 ? String.format("%.2fL", collectedThisMonth/100000)
                             : (collectedThisMonth >= 1000 ? String.format("%.1fK", collectedThisMonth/1000) :
@@ -3407,6 +3458,46 @@ String
                         <!-- ═══ REPORTS ═══ -->
 
                         <div class="page" id="page-reports">
+                          <div class="pg-header">
+                            <div class="pg-header-left">
+                              <p>School performance aur dynamic Python data analytics dekho</p>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn-accent" id="btn-refresh-reports" onclick="refreshReports()">
+                                    <i class="bi bi-arrow-repeat"></i> Latest Data Fetch Karo
+                                </button>
+                                <button class="btn-outline"><i class="bi bi-download"></i> All Reports Export</button>
+                            </div>
+                          </div>
+
+                          <div class="row g-4">
+                            <div class="col-md-6">
+                              <div class="report-img-container">
+                                <div class="report-title"><i class="bi bi-people-fill" style="color:#ea580c"></i> Enrollment Trends</div>
+                                <img src="/images/reports/enrollment_trend.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                              </div>
+                            </div>
+                            <div class="col-md-6">
+                              <div class="report-img-container">
+                                <div class="report-title"><i class="bi bi-calendar-check-fill" style="color:#059669"></i> Attendance by Class</div>
+                                <img src="/images/reports/attendance_by_class.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                              </div>
+                            </div>
+                            <div class="col-md-6">
+                              <div class="report-img-container">
+                                <div class="report-title"><i class="bi bi-cash-stack" style="color:#d97706"></i> Fee Collection Status</div>
+                                <img src="/images/reports/fee_distribution.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                              </div>
+                            </div>
+                            <div class="col-md-6">
+                              <div class="report-img-container">
+                                <div class="report-title"><i class="bi bi-bar-chart-fill" style="color:#7c3aed"></i> Academic Performance</div>
+                                <img src="/images/reports/academic_performance.png" class="report-img" onerror="this.src='https://placehold.co/600x400?text=Data+not+available'" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div style="display:none">
 
                           <div class="pg-header">
 
@@ -3414,11 +3505,16 @@ String
 
 
 
-                              <p>School performance aur data reports yahan dekho</p>
+                              <p>School performance aur dynamic Python data analytics dekho</p>
 
                             </div>
 
-                            <button class="btn-outline"><i class="bi bi-download"></i> All Reports Export</button>
+                            <div class="d-flex gap-2">
+                                <button class="btn-accent" id="btn-refresh-reports" onclick="refreshReports()">
+                                    <i class="bi bi-arrow-repeat"></i> Latest Data Fetch Karo
+                                </button>
+                                <button class="btn-outline"><i class="bi bi-download"></i> All Reports Export</button>
+                            </div>
 
                           </div>
 
@@ -6683,6 +6779,35 @@ String
                         </div>
 
                         <script>
+
+                          async function refreshReports() {
+                              const btn = document.getElementById('btn-refresh-reports');
+                              const originalText = btn.innerHTML;
+                              btn.disabled = true;
+                              btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Generating...';
+                              
+                              try {
+                                  const response = await fetch('/generateReports');
+                                  const text = await response.text();
+                                  if (text.trim().startsWith('Success')) {
+                                      // Reload all report images by adding a timestamp to bypass cache
+                                      const timestamp = new Date().getTime();
+                                      document.querySelectorAll('.report-img').forEach(img => {
+                                          const currentSrc = img.src.split('?')[0];
+                                          img.src = currentSrc + '?t=' + timestamp;
+                                      });
+                                      console.log('Reports generated successfully');
+                                  } else {
+                                      alert('Failed to generate reports: ' + text);
+                                  }
+                              } catch (error) {
+                                  console.error('Error refreshing reports:', error);
+                                  alert('Connection error. Please check if server is running.');
+                              } finally {
+                                  btn.disabled = false;
+                                  btn.innerHTML = originalText;
+                              }
+                          }
 
                           function filterFeeTable() {
 

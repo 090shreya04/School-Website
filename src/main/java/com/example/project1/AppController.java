@@ -16,6 +16,10 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 @Controller
 public class AppController {
@@ -61,6 +65,37 @@ public class AppController {
     @GetMapping("/feeStructure")
     public String feeStructure() {
         return "feeStructure";
+    }
+
+    @GetMapping("/generateReports")
+    @ResponseBody
+    public String generateReports(HttpSession session) {
+        if (session == null || !"admin".equalsIgnoreCase((String) session.getAttribute("role"))) {
+            return "Error: Unauthorized";
+        }
+        try {
+            // Absolute path to python and script
+            ProcessBuilder pb = new ProcessBuilder("python", "c:/project1/src/main/python/report_generator.py");
+            pb.directory(new java.io.File("c:/project1"));
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            String line;
+            StringBuilder output = new StringBuilder();
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+            
+            int exitCode = p.waitFor();
+            if (exitCode == 0) {
+                return "Success\n" + output.toString();
+            } else {
+                return "Error (Exit " + exitCode + ")\n" + output.toString();
+            }
+        } catch (Exception e) {
+            return "Error: " + e.getMessage();
+        }
     }
 
     @PostMapping("/feeStructure")
