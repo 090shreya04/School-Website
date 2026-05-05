@@ -102,44 +102,46 @@
                         psClasses.setString(1, tId);
                         ResultSet rsClasses = psClasses.executeQuery();
                         while(rsClasses.next()) {
-                            myClassesCount++;
-                            Map<String, String> c = new HashMap<>();
-                            String cVal = rsClasses.getString("class");
-                            String sVal = rsClasses.getString("section");
-                            c.put("class", cVal);
-                            c.put("section", sVal);
-                            
-                            // Get student count for this class
-                            PreparedStatement psSC = connD.prepareStatement("SELECT COUNT(*) FROM students WHERE class = ? AND section = ?");
-                            psSC.setString(1, cVal);
-                            psSC.setString(2, sVal);
-                            ResultSet rsSC = psSC.executeQuery();
-                            if(rsSC.next()) c.put("student_count", rsSC.getString(1));
-                            
-                            // Get performance for this class
-                            PreparedStatement psPerf = connD.prepareStatement("SELECT AVG(marks_obtained / total_marks * 100) FROM results WHERE class = ? AND section = ? AND teacher_id = ?");
-                            psPerf.setString(1, cVal);
-                            psPerf.setString(2, sVal);
-                            psPerf.setString(3, tId);
-                            ResultSet rsPerf = psPerf.executeQuery();
-                            double perf = 0.0;
-                            if(rsPerf.next()) perf = rsPerf.getDouble(1);
-                            c.put("performance", String.format("%.1f", perf));
-                            
-                            // Get today's attendance for this class
-                            PreparedStatement psPres = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'present'");
-                            psPres.setString(1, cVal);
-                            psPres.setString(2, sVal);
-                            ResultSet rsPres = psPres.executeQuery();
-                            if(rsPres.next()) c.put("present_today", rsPres.getString(1)); else c.put("present_today", "0");
-                            
-                            PreparedStatement psAbs = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'absent'");
-                            psAbs.setString(1, cVal);
-                            psAbs.setString(2, sVal);
-                            ResultSet rsAbs = psAbs.executeQuery();
-                            if(rsAbs.next()) c.put("absent_today", rsAbs.getString(1)); else c.put("absent_today", "0");
-                            
-                            assignedClasses.add(c);
+                            try {
+                                Map<String, String> c = new HashMap<>();
+                                String cVal = rsClasses.getString("class");
+                                String sVal = rsClasses.getString("section");
+                                c.put("class", cVal);
+                                c.put("section", sVal);
+                                
+                                // Get student count for this class
+                                PreparedStatement psSC = connD.prepareStatement("SELECT COUNT(*) FROM students WHERE class = ? AND section = ?");
+                                psSC.setString(1, cVal);
+                                psSC.setString(2, sVal);
+                                ResultSet rsSC = psSC.executeQuery();
+                                if(rsSC.next()) c.put("student_count", rsSC.getString(1)); else c.put("student_count", "0");
+                                
+                                // Get performance for this class
+                                PreparedStatement psPerf = connD.prepareStatement("SELECT AVG(marks_obtained / total_marks * 100) FROM results WHERE class = ? AND section = ? AND teacher_id = ?");
+                                psPerf.setString(1, cVal);
+                                psPerf.setString(2, sVal);
+                                psPerf.setString(3, tId);
+                                ResultSet rsPerf = psPerf.executeQuery();
+                                double perf = 0.0;
+                                if(rsPerf.next()) perf = rsPerf.getDouble(1);
+                                c.put("performance", String.format("%.1f", perf));
+                                
+                                // Get today's attendance for this class
+                                PreparedStatement psPres = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'present'");
+                                psPres.setString(1, cVal);
+                                psPres.setString(2, sVal);
+                                ResultSet rsPres = psPres.executeQuery();
+                                if(rsPres.next()) c.put("present_today", rsPres.getString(1)); else c.put("present_today", "0");
+                                
+                                PreparedStatement psAbs = connD.prepareStatement("SELECT COUNT(*) FROM attendance WHERE class = ? AND section = ? AND date = CURDATE() AND status = 'absent'");
+                                psAbs.setString(1, cVal);
+                                psAbs.setString(2, sVal);
+                                ResultSet rsAbs = psAbs.executeQuery();
+                                if(rsAbs.next()) c.put("absent_today", rsAbs.getString(1)); else c.put("absent_today", "0");
+                                
+                                assignedClasses.add(c);
+                                myClassesCount++;
+                            } catch (Exception e) { System.err.println("Error processing class row: " + e.getMessage()); }
                         }
                     } catch (Exception e) { System.err.println("Error fetching classes: " + e.getMessage()); }
                         
@@ -2006,8 +2008,8 @@
                                             </div>
                                             <% } %>
 
-                                                <% if (hasProfessionalInfo) { %>
-                                                    <div class="col-12 col-lg-5">
+                                                <div class="col-12 col-lg-5">
+                                                    <% if (hasProfessionalInfo) { %>
                                                         <div class="cbox mb-3">
                                                             <div class="chead"><i class="bi bi-briefcase-fill"
                                                                     style="color:var(--blue)"></i>
@@ -2110,8 +2112,9 @@
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                    </div>
-                        </div> <!-- FIX: page-profile closes here -->
+                                                </div> <!-- Closes col-12 col-lg-5 -->
+                                    </div> <!-- Closes row g-3 -->
+                        </div> <!-- Closes page-profile -->
 
                         <!-- MY CLASSES -->
                         <div class="page" id="page-myclasses">
@@ -2157,9 +2160,14 @@
                                             <%
                                                 // Calculate overall avg attendance for today
                                                 int totalPres = 0;
-                                                for(Map<String, String> c : assignedClasses) {
-                                                    totalPres += Integer.parseInt(c.get("present_today"));
-                                                }
+                                                try {
+                                                    for(Map<String, String> c : assignedClasses) {
+                                                        String pt = c.get("present_today");
+                                                        if(pt != null && !pt.isEmpty()) {
+                                                            totalPres += Integer.parseInt(pt);
+                                                        }
+                                                    }
+                                                } catch(Exception e) { System.err.println("Error calc avg attendance: " + e.getMessage()); }
                                                 double avgAtt = totalStudentsCount > 0 ? (double)totalPres / totalStudentsCount * 100 : 0;
                                             %>
                                             <p><%= String.format("%.1f", avgAtt) %>%</p><small>Today Att.</small>
