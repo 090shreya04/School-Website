@@ -1575,7 +1575,7 @@ String
 
                           <div class="row g-3 mb-3">
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -1598,7 +1598,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -1621,7 +1621,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -1644,7 +1644,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -1928,7 +1928,7 @@ String
 
                           <div class="row g-3 mb-3">
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -1951,7 +1951,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -1974,7 +1974,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -1997,7 +1997,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="mini-stat">
 
@@ -2223,7 +2223,7 @@ String
 
                           <div class="row g-4 mb-4">
 
-                            <div class="col-12">
+                            <div class="col-md-4">
 
                               <div class="stat">
 
@@ -2248,7 +2248,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-md-4">
 
                               <div class="stat">
 
@@ -2273,7 +2273,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-md-4">
 
                               <div class="stat working-days-card" style="position:relative; cursor:default;">
 
@@ -2575,7 +2575,7 @@ String
 
                           <div class="row g-3 mb-3">
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="stat">
 
@@ -2596,7 +2596,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="stat">
 
@@ -2617,7 +2617,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="stat">
 
@@ -2638,7 +2638,7 @@ String
 
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6 col-md-3">
 
                               <div class="stat">
 
@@ -3032,7 +3032,7 @@ String
 
                             <div class="row g-3 mb-3">
 
-                              <div class="col-12">
+                              <div class="col-6 col-md-3">
 
                                 <div class="stat">
 
@@ -3051,7 +3051,7 @@ String
 
                               </div>
 
-                              <div class="col-12">
+                              <div class="col-6 col-md-3">
 
                                 <div class="stat">
 
@@ -3074,7 +3074,7 @@ String
 
                               </div>
 
-                              <div class="col-12">
+                              <div class="col-6 col-md-3">
 
                                 <div class="stat">
 
@@ -3093,7 +3093,7 @@ String
 
                               </div>
 
-                              <div class="col-12">
+                              <div class="col-6 col-md-3">
 
                                 <div class="stat">
 
