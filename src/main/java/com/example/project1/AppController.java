@@ -1,4 +1,4 @@
-package com.example.project1;
+﻿package com.example.project1;
 
 import java.util.List;
 import java.util.Map;
@@ -114,7 +114,7 @@ public class AppController {
         }
 
         if ("admin".equalsIgnoreCase(role)) {
-            Integer adminCount = jdbc.queryForObject("SELECT COUNT(*) FROM user WHERE role = 'admin'", Integer.class);
+            Integer adminCount = jdbc.queryForObject("SELECT COUNT(*) FROM `user` WHERE role = 'admin'", Integer.class);
             if (adminCount != null && adminCount > 0) {
                 m.addAttribute("error", "Administrator already exists. You cannot register as an admin.");
                 return "signup";
@@ -126,7 +126,7 @@ public class AppController {
         String encryptedConfirmPassword = encoder.encode(confirm_password);
 
         try {
-            String sql = "INSERT INTO user(name, role, password, confirmpassword) VALUES(?, ?, ?, ?)";
+            String sql = "INSERT INTO `user`(name, role, password, confirmpassword) VALUES(?, ?, ?, ?)";
             jdbc.update(sql, uname, role, encryptedPassword, encryptedConfirmPassword);
             m.addAttribute("msg", "Registered Successfully");
         } catch (org.springframework.dao.DuplicateKeyException e) {
@@ -147,7 +147,7 @@ public class AppController {
             HttpServletRequest request,
             HttpServletResponse response,
             Model model) {
-        String sql = "SELECT * FROM user WHERE name = ?";
+        String sql = "SELECT * FROM `user` WHERE name = ?";
 
         List<Map<String, Object>> users = jdbc.queryForList(sql, name);
 
@@ -202,7 +202,7 @@ public class AppController {
         String encryptedPassword = encoder.encode(password);
         String encryptedConfirmPassword = encoder.encode(confirm_password);
 
-        String sql = "UPDATE user SET password = ?, confirmPassword = ? WHERE name = ?";
+        String sql = "UPDATE `user` SET password = ?, confirmPassword = ? WHERE name = ?";
         int rowsAffected = jdbc.update(sql, encryptedPassword, encryptedConfirmPassword, name);
 
         if (rowsAffected > 0) {
@@ -223,7 +223,7 @@ public class AppController {
         if (!res.isEmpty()) {
             Object userId = res.get(0).get("user_id");
             jdbc.update("DELETE FROM students WHERE student_id = ?", id);
-            jdbc.update("DELETE FROM user WHERE user_id = ?", userId);
+            jdbc.update("DELETE FROM `user` WHERE user_id = ?", userId);
         }
         return "redirect:/adashboard?page=students&deleted=1";
     }
@@ -238,7 +238,7 @@ public class AppController {
         if (!res.isEmpty()) {
             Object userId = res.get(0).get("user_id");
             jdbc.update("DELETE FROM teachers WHERE teacher_id = ?", id);
-            jdbc.update("DELETE FROM user WHERE user_id = ?", userId);
+            jdbc.update("DELETE FROM `user` WHERE user_id = ?", userId);
         }
         return "redirect:/adashboard?page=teachers&deleted=1";
     }
@@ -263,7 +263,7 @@ public class AppController {
 
         try {
             jdbc.update(
-                    "INSERT INTO user (name, password, confirmpassword, role, is_active) VALUES (?, ?, ?, 'faculty', 1)",
+                    "INSERT INTO `user` (name, password, confirmpassword, role, is_active) VALUES (?, ?, ?, 'faculty', 1)",
                     name, encryptedPass, encryptedPass);
 
             Integer userId = jdbc.queryForObject("SELECT LAST_INSERT_ID()", Integer.class);
@@ -318,7 +318,7 @@ public class AppController {
             if (!res.isEmpty()) {
                 Object userId = res.get(0).get("user_id");
                 int isActive = "Active".equalsIgnoreCase(status) ? 1 : 0;
-                jdbc.update("UPDATE user SET name=?, is_active=? WHERE user_id=?", name, isActive, userId);
+                jdbc.update("UPDATE `user` SET name=?, is_active=? WHERE user_id=?", name, isActive, userId);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -1026,12 +1026,12 @@ public class AppController {
 
         try {
 
-            String dbPass = jdbc.queryForObject("SELECT password FROM user WHERE user_id = ?", String.class, userId);
+            String dbPass = jdbc.queryForObject("SELECT password FROM `user` WHERE user_id = ?", String.class, userId);
             BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
             if (encoder.matches(currentPassword, dbPass)) {
                 String encryptedNewPass = encoder.encode(newPassword);
-                jdbc.update("UPDATE user SET password = ?, confirmpassword = ? WHERE user_id = ?", 
+                jdbc.update("UPDATE `user` SET password = ?, confirmpassword = ? WHERE user_id = ?", 
                     encryptedNewPass, encryptedNewPass, userId);
             } else {
                 return "redirect:/adashboard?page=settings&error=wrong_current_password";

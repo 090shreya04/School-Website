@@ -1,4 +1,4 @@
-package com.example.project1;
+﻿package com.example.project1;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
@@ -56,8 +56,8 @@ public class UpdateProfileServlet extends HttpServlet {
             if (dbPass == null) dbPass = "";
             conn = DriverManager.getConnection(dbUrl, dbUser, dbPass);
 
-            // Update user table (common for all)
-            String userSql = "UPDATE user SET name = ? WHERE user_id = ?";
+            // UPDATE `user` table (common for all)
+            String userSql = "UPDATE `user` SET name = ? WHERE user_id = ?";
             PreparedStatement userPstmt = conn.prepareStatement(userSql);
             userPstmt.setString(1, name);
             userPstmt.setObject(2, userId);
