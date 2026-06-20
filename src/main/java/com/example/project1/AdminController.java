@@ -1,4 +1,4 @@
-﻿package com.example.project1;
+package com.example.project1;
 
 import java.io.IOException;
 import java.util.List;
