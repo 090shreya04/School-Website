@@ -1,4 +1,4 @@
-package com.example.project1;
+﻿package com.example.project1;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -44,7 +44,7 @@ public class AddStudentServlet extends HttpServlet {
             // 1. Create user in 'user' table
             // Note: 'user' table does NOT have 'email' column, uses 'name' for login.
             // Also requires 'confirmpassword'.
-            String userSql = "INSERT INTO user (name, password, confirmpassword, role, is_active) VALUES (?, ?, ?, 'student', 1)";
+            String userSql = "INSERT INTO users (name, password, confirmpassword, role, is_active) VALUES (?, ?, ?, 'student', 1)";
             PreparedStatement userPstmt = conn.prepareStatement(userSql, Statement.RETURN_GENERATED_KEYS);
             userPstmt.setString(1, name);
             userPstmt.setString(2, encryptedPass);
