@@ -1,4 +1,4 @@
-package com.example.project1;
+ackage com.example.project1;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
@@ -48,7 +48,13 @@ public class UpdateProfileServlet extends HttpServlet {
         Connection conn = null;
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
-            conn = DriverManager.getConnection("jdbc:mysql://localhost:3308/project1", "root", "");
+                        String dbUrl = System.getenv("SPRING_DATASOURCE_URL");
+            if (dbUrl == null) dbUrl = "jdbc:mysql://localhost:3308/project1";
+            String dbUser = System.getenv("SPRING_DATASOURCE_USERNAME");
+            if (dbUser == null) dbUser = "root";
+            String dbPass = System.getenv("SPRING_DATASOURCE_PASSWORD");
+            if (dbPass == null) dbPass = "";
+            conn = DriverManager.getConnection(dbUrl, dbUser, dbPass);
 
             // Update user table (common for all)
             String userSql = "UPDATE user SET name = ? WHERE user_id = ?";

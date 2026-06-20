@@ -1,4 +1,4 @@
-package com.example.project1;
+ackage com.example.project1;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -41,8 +41,13 @@ public class EditStudentServlet extends HttpServlet {
         Connection conn = null;
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
-            conn = DriverManager.getConnection(
-                    "jdbc:mysql://localhost:3308/project1", "root", "");
+                        String dbUrl = System.getenv("SPRING_DATASOURCE_URL");
+            if (dbUrl == null) dbUrl = "jdbc:mysql://localhost:3308/project1";
+            String dbUser = System.getenv("SPRING_DATASOURCE_USERNAME");
+            if (dbUser == null) dbUser = "root";
+            String dbPass = System.getenv("SPRING_DATASOURCE_PASSWORD");
+            if (dbPass == null) dbPass = "";
+            conn = DriverManager.getConnection(dbUrl, dbUser, dbPass);
             conn.setAutoCommit(false);
 
             // ── 1. Update students table (name, email, roll, class, section) ─────
