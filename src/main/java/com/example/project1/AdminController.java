@@ -1,4 +1,4 @@
-﻿package com.example.project1;
+package com.example.project1;
 
 import java.io.IOException;
 import java.util.List;
@@ -24,7 +24,7 @@ public class AdminController {
     @GetMapping("/profile")
     public String profile(HttpSession session, Model m) {
         String email = (String) session.getAttribute("email");
-        String sql = "select name, users.email,role,photo FROM users left join profile on users.email=profile.email where users.email='"
+        String sql = "select name, user.email,role,photo from user left join profile on user.email=profile.email where user.email='"
                 + email + "'";
         List<Map<String, Object>> userprofile = jdbc.queryForList(sql);
         m.addAttribute("userprofile", userprofile);

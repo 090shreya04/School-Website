@@ -1,4 +1,4 @@
-﻿package com.example.project1;
+package com.example.project1;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -61,7 +61,7 @@ public class EditStudentServlet extends HttpServlet {
 
             // ── 2. Update name in user table (user table lacks 'email' col) ──
             String updateUser =
-                    "UPDATE users SET name=? WHERE user_id = " +
+                    "UPDATE user SET name=? WHERE user_id = " +
                     "(SELECT user_id FROM students WHERE student_id=?)";
             PreparedStatement ps2 = conn.prepareStatement(updateUser);
             ps2.setString(1, name);
